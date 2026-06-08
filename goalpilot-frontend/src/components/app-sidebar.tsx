@@ -1,5 +1,5 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, Network, LogOut, Sparkles } from "lucide-react";
+import { LayoutDashboard, Network, LogOut, Sparkles, Calendar as CalendarIcon } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar,
@@ -7,9 +7,12 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { FocusCoach } from "./focus-coach";
+
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Knowledge Graph", url: "/knowledge-graph", icon: Network },
+  { title: "Calendar", url: "/calendar", icon: CalendarIcon },
 ];
 
 export function AppSidebar() {
@@ -57,9 +60,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary-glow" />
-                  {!collapsed && <span>Focus Coach</span>}
+                <SidebarMenuButton asChild>
+                  <FocusCoach collapsed={collapsed} />
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

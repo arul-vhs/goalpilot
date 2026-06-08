@@ -10,34 +10,58 @@ class GraphState(TypedDict):
     user_context: dict
     tasks: List[dict]
 
-# 2. Define the "Node" (Move the LLM inside here!)
+# 2. Define the "Node"
 def decomposition_node(state: GraphState):
     api_key = os.getenv("GEMINI_API_KEY")
     
-    # Initialize LLM only when this node is executed
     llm = ChatGoogleGenerativeAI(
-        model="gemma-2-27b-it", 
+        model="gemini-2.5-flash", 
         google_api_key=api_key
     )
     
+    strategy = state['user_context'].get('strategy', 'balanced')
+    clarifications = state['user_context'].get('clarifications', [])
+    hours = state['user_context'].get('daily_hours', 2)
+    focus = state['user_context'].get('current_focus', '')
+    
+    clarifications_text = "\n".join([f"Q: {c.get('q')}\nA: {c.get('a')}" for c in clarifications])
+    
     prompt = f"""
-    User Goal: {state['goal']}
-    Context: {state['user_context']}
+    The user wants to achieve this goal: "{state['goal']}"
+    User Profile:
+    - Current focus/skills: "{focus}"
+    - Daily commitment: {hours} hours
+    - Selected Strategy: "{strategy}"
     
-    Break this goal into 5 actionable tasks. 
-    Define dependencies: If Task B needs Task A, set "depends_on": "ID of Task A".
+    Clarifying details gathered:
+    {clarifications_text}
     
-    Return ONLY a JSON list:
+    Break this goal into 6 to 8 highly actionable tasks structured in a logical flow.
+    Make sure some tasks depend on others (e.g. Task 2 depends on Task 1, Task 4 depends on Task 2 and 3) to form an interconnected graph.
+    
+    For each task, define:
+    - id: A simple temp ID like "1", "2", "3"
+    - title: Brief summary
+    - description: Specific actions to perform
+    - priority: "low", "medium", "high", or "critical"
+    - effort: An integer between 1 and 10 representing estimated time/difficulty (where 1 = 1 hour, 10 = 10+ hours)
+    - depends_on: The ID of a task it depends on, or null if it can start immediately.
+    
+    Return ONLY a JSON list of objects. Do not include markdown wraps.
     [
-      {{"id": "1", "title": "...", "priority": "High", "effort": "2h", "depends_on": null}},
+      {{"id": "1", "title": "...", "description": "...", "priority": "medium", "effort": 3, "depends_on": null}},
       ...
     ]
     """
     
     response = llm.invoke(prompt)
     raw_content = response.content.replace('```json', '').replace('```', '').strip()
-    tasks = json.loads(raw_content)
-    
+    try:
+        tasks = json.loads(raw_content)
+    except Exception as e:
+        # Fallback parsing in case model adds formatting
+        tasks = []
+        
     return {"tasks": tasks}
 
 # 3. Build the Graph
