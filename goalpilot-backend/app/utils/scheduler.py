@@ -18,6 +18,9 @@ def schedule_user_tasks(
     :param start_date_str: ISO string of when to start planning (default = today).
     """
     
+    if daily_hours is None:
+        daily_hours = 2.0
+        
     # 1. Parse start date (default to today, local time)
     local_tz = pytz.timezone("Asia/Kolkata")  # Matching local metadata timezone or fallback
     if start_date_str:
@@ -118,7 +121,8 @@ def schedule_user_tasks(
     while task_idx < len(sorted_tids):
         tid = sorted_tids[task_idx]
         task = task_map[tid]
-        effort_hours = float(task.get("effort", 3)) # effort in hours
+        effort_val = task.get("effort")
+        effort_hours = float(effort_val) if effort_val is not None else 3.0
         
         # Find next available time block that fits the effort_hours
         task_scheduled = False

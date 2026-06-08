@@ -1,7 +1,7 @@
 import os
 import json
 from typing import TypedDict, List
-from langchain_google_genai import ChatGoogleGenerativeAI
+from app.utils.llm_helper import invoke_llm_with_fallback
 from langgraph.graph import StateGraph, END
 
 # 1. Define the "State"
@@ -12,13 +12,6 @@ class GraphState(TypedDict):
 
 # 2. Define the "Node"
 def decomposition_node(state: GraphState):
-    api_key = os.getenv("GEMINI_API_KEY")
-    
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash", 
-        google_api_key=api_key
-    )
-    
     strategy = state['user_context'].get('strategy', 'balanced')
     clarifications = state['user_context'].get('clarifications', [])
     hours = state['user_context'].get('daily_hours', 2)
@@ -54,7 +47,7 @@ def decomposition_node(state: GraphState):
     ]
     """
     
-    response = llm.invoke(prompt)
+    response = invoke_llm_with_fallback(prompt)
     raw_content = response.content.replace('```json', '').replace('```', '').strip()
     try:
         tasks = json.loads(raw_content)

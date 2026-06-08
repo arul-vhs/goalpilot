@@ -1,6 +1,6 @@
 import os
 import json
-from langchain_google_genai import ChatGoogleGenerativeAI
+from app.utils.llm_helper import invoke_llm_with_fallback
 from langchain_core.messages import SystemMessage, HumanMessage
 
 def get_onboarding_advice(user_responses: dict) -> dict:
@@ -8,15 +8,6 @@ def get_onboarding_advice(user_responses: dict) -> dict:
     Analyzes the user's focus, hours, and big vague goal, and proposes 3 strategies.
     Returns a structured dict.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return {"error": "GEMINI_API_KEY not found."}
-
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash", 
-        google_api_key=api_key
-    )
-    
     prompt = f"""
     The user wants to achieve: "{user_responses.get('goal')}"
     Their daily available time: {user_responses.get('hours')} hours
@@ -48,7 +39,7 @@ def get_onboarding_advice(user_responses: dict) -> dict:
     """
     
     try:
-        response = llm.invoke([
+        response = invoke_llm_with_fallback([
             SystemMessage(content="You are the GoalPilot Onboarding Consultant. You output ONLY valid, parsable JSON without markdown wrapper blocks."),
             HumanMessage(content=prompt)
         ])
@@ -61,15 +52,6 @@ def get_clarifying_questions(goal: str, strategy_id: str) -> list:
     """
     Generates 3 highly specific clarifying questions based on the chosen goal and strategy.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        return ["Error: GEMINI_API_KEY not found."]
-
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash", 
-        google_api_key=api_key
-    )
-    
     prompt = f"""
     User Goal: "{goal}"
     Selected Strategy: "{strategy_id}"
@@ -86,7 +68,7 @@ def get_clarifying_questions(goal: str, strategy_id: str) -> list:
     """
     
     try:
-        response = llm.invoke([
+        response = invoke_llm_with_fallback([
             SystemMessage(content="You output ONLY valid, parsable JSON lists without markdown wrapper blocks."),
             HumanMessage(content=prompt)
         ])

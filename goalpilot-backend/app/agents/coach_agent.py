@@ -1,6 +1,6 @@
 import os
 import json
-from langchain_google_genai import ChatGoogleGenerativeAI
+from app.utils.llm_helper import invoke_llm_with_fallback
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
 from supabase import Client
@@ -68,8 +68,8 @@ def run_coach_chat(supabase_client: Client, user_id: str, message: str, history:
             # Fetch tasks
             tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).execute()
             # Fetch profile
-            prof_res = supabase_client.table("profiles").select("daily_hours").eq("id", user_id).maybeSingle().execute()
-            daily_hours = prof_res.data.get("daily_hours", 2) if prof_res.data else 2
+            prof_res = supabase_client.table("profiles").select("daily_hours").eq("id", user_id).maybe_single().execute()
+            daily_hours = prof_res.data.get("daily_hours") if prof_res.data and prof_res.data.get("daily_hours") is not None else 2.0
             
             from app.utils.scheduler import schedule_user_tasks
             scheduled = schedule_user_tasks(tasks_res.data, daily_hours, [])
@@ -82,14 +82,7 @@ def run_coach_chat(supabase_client: Client, user_id: str, message: str, history:
         except Exception as e:
             return f"Error rescheduling: {str(e)}"
 
-    # Set up LLM and bind tools
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=api_key
-    )
-    
     tools = [list_tasks, add_task, complete_task, reschedule_all]
-    llm_with_tools = llm.bind_tools(tools)
     
     # Build history messages
     messages = [
@@ -113,7 +106,7 @@ def run_coach_chat(supabase_client: Client, user_id: str, message: str, history:
     
     try:
         # First LLM call
-        ai_response = llm_with_tools.invoke(messages)
+        ai_response = invoke_llm_with_fallback(messages, tools=tools)
         
         # Tool call loop
         tool_calls = ai_response.tool_calls
@@ -136,7 +129,7 @@ def run_coach_chat(supabase_client: Client, user_id: str, message: str, history:
                     messages.append(ToolMessage(content=tool_result, tool_call_id=tool_id))
                     
             # Run final response generation
-            ai_response = llm.invoke(messages)
+            ai_response = invoke_llm_with_fallback(messages)
             
         return {"content": ai_response.content}
     except Exception as e:

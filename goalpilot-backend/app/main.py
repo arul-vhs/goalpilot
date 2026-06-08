@@ -104,9 +104,9 @@ async def schedule_tasks(data: dict, authorization: Optional[str] = Header(None)
         
     # 1. Fetch user tasks and profile focus hours
     tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).execute()
-    prof_res = supabase_client.table("profiles").select("daily_hours").eq("id", user_id).maybeSingle().execute()
+    prof_res = supabase_client.table("profiles").select("daily_hours").eq("id", user_id).maybe_single().execute()
     
-    daily_hours = prof_res.data.get("daily_hours", 2.0) if prof_res.data else 2.0
+    daily_hours = prof_res.data.get("daily_hours") if prof_res.data and prof_res.data.get("daily_hours") is not None else 2.0
     
     # 2. Run Scheduling Engine
     try:
