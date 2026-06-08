@@ -1,13 +1,16 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+
 from supabase import create_client, Client
 from .agents.onboarding_agent import get_onboarding_advice
 from .agents.planner_agent import planner_agent
 from .utils.db_helper import save_tasks_to_db
 
-load_dotenv()
+
 
 app = FastAPI(title="GoalPilot API")
 
