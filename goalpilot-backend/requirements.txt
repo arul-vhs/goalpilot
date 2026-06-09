@@ -7,3 +7,4 @@ python-dotenv
 pydantic
 google-auth-oauthlib
 google-api-python-client
+pytz
