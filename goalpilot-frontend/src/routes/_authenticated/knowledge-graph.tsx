@@ -372,86 +372,96 @@ function KnowledgeGraphPage() {
                     </p>
                   </div>
                 ) : (
-                  <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-muted-foreground">Rendering canvas…</div>}>
-                    <ForceGraph2D
-                      graphData={graphData}
-                      width={size.w}
-                      height={size.h}
-                      backgroundColor="rgba(0,0,0,0)"
-                      nodeRelSize={4}
-                      linkColor={(link: any) => {
-                        const targetNode = graphData.nodes.find(n => n.id === link.target.id || n.id === link.target);
-                        return targetNode?.completed ? "rgba(34, 197, 94, 0.4)" : "rgba(255,255,255,0.25)";
-                      }}
-                      linkWidth={1.5}
-                      linkDirectionalArrowLength={6}
-                      linkDirectionalArrowRelPos={1}
-                      linkDirectionalArrowColor={() => "rgba(255,255,255,0.4)"}
-                      onNodeClick={(node: any) => setSelected(node as GraphNode)}
-                      nodeCanvasObject={(node: any, ctx, scale) => {
-                        const label = node.title;
-                        const r = Math.sqrt(node.val ?? 4) * 2.8;
-                        const isSelected = selected?.id === node.id;
-                        
-                        // Node color selection
-                        let nodeColor = PURPLE;
-                        let glowColor = PURPLE_GLOW;
-                        if (node.completed) {
-                          nodeColor = COMPLETED_COLOR;
-                          glowColor = COMPLETED_COLOR;
-                        } else if (node.isGoal) {
-                          nodeColor = GOLD;
-                          glowColor = GOLD_GLOW;
-                        }
+                  <div className="absolute inset-0">
+                    <Suspense fallback={<div className="absolute inset-0 flex items-center justify-center text-muted-foreground">Rendering canvas…</div>}>
+                      <ForceGraph2D
+                        graphData={graphData}
+                        width={size.w}
+                        height={size.h}
+                        backgroundColor="rgba(0,0,0,0)"
+                        nodeRelSize={4}
+                        linkColor={(link: any) => {
+                          const targetNode = graphData.nodes.find(n => n.id === link.target.id || n.id === link.target);
+                          return targetNode?.completed ? "rgba(34, 197, 94, 0.4)" : "rgba(255,255,255,0.25)";
+                        }}
+                        linkWidth={1.5}
+                        linkDirectionalArrowLength={6}
+                        linkDirectionalArrowRelPos={1}
+                        linkDirectionalArrowColor={() => "rgba(255,255,255,0.4)"}
+                        onNodeClick={(node: any) => setSelected(node as GraphNode)}
+                        nodeCanvasObject={(node: any, ctx, scale) => {
+                          const label = node.title;
+                          const r = Math.sqrt(node.val ?? 4) * 2.8;
+                          const x = node.x;
+                          const y = node.y;
+                          
+                          // Safety check: skip drawing if node coordinates or radius are invalid
+                          if (typeof x !== "number" || typeof y !== "number" || !isFinite(x) || !isFinite(y) || typeof r !== "number" || !isFinite(r)) {
+                            return;
+                          }
 
-                        // Outer Glow Ring
-                        const grad = ctx.createRadialGradient(node.x, node.y, r, node.x, node.y, r + 12);
-                        grad.addColorStop(0, glowColor);
-                        grad.addColorStop(1, "rgba(0,0,0,0)");
-                        ctx.fillStyle = grad;
-                        ctx.globalAlpha = isSelected ? 0.8 : 0.35;
-                        ctx.beginPath();
-                        ctx.arc(node.x, node.y, r + 8, 0, 2 * Math.PI);
-                        ctx.fill();
-                        ctx.globalAlpha = 1;
+                          const isSelected = selected?.id === node.id;
+                          
+                          // Node color selection
+                          let nodeColor = PURPLE;
+                          let glowColor = PURPLE_GLOW;
+                          if (node.completed) {
+                            nodeColor = COMPLETED_COLOR;
+                            glowColor = COMPLETED_COLOR;
+                          } else if (node.isGoal) {
+                            nodeColor = GOLD;
+                            glowColor = GOLD_GLOW;
+                          }
 
-                        // Core Node
-                        ctx.beginPath();
-                        if (node.isGoal && !node.completed) {
-                          // Draw a diamond shape for goal nodes
-                          ctx.moveTo(node.x, node.y - r);
-                          ctx.lineTo(node.x + r, node.y);
-                          ctx.lineTo(node.x, node.y + r);
-                          ctx.lineTo(node.x - r, node.y);
-                          ctx.closePath();
-                        } else {
-                          ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
-                        }
-                        ctx.fillStyle = nodeColor;
-                        ctx.fill();
+                          // Outer Glow Ring
+                          const grad = ctx.createRadialGradient(x, y, r, x, y, r + 12);
+                          grad.addColorStop(0, glowColor);
+                          grad.addColorStop(1, "rgba(0,0,0,0)");
+                          ctx.fillStyle = grad;
+                          ctx.globalAlpha = isSelected ? 0.8 : 0.35;
+                          ctx.beginPath();
+                          ctx.arc(x, y, r + 8, 0, 2 * Math.PI);
+                          ctx.fill();
+                          ctx.globalAlpha = 1;
 
-                        if (isSelected) {
-                          ctx.strokeStyle = "#ffffff";
-                          ctx.lineWidth = 2.5 / scale;
-                          ctx.stroke();
-                        }
+                          // Core Node
+                          ctx.beginPath();
+                          if (node.isGoal && !node.completed) {
+                            // Draw a diamond shape for goal nodes
+                            ctx.moveTo(x, y - r);
+                            ctx.lineTo(x + r, y);
+                            ctx.lineTo(x, y + r);
+                            ctx.lineTo(x - r, y);
+                            ctx.closePath();
+                          } else {
+                            ctx.arc(x, y, r, 0, 2 * Math.PI);
+                          }
+                          ctx.fillStyle = nodeColor;
+                          ctx.fill();
 
-                        // Text Label (Inter font)
-                        const fontSize = Math.max(9, 11 / scale);
-                        ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
-                        ctx.textAlign = "center";
-                        ctx.textBaseline = "top";
-                        ctx.fillStyle = "rgba(240, 230, 255, 0.95)";
-                        
-                        // Truncated labels if scale is zoomed out
-                        let displayLabel = label;
-                        if (scale < 0.8 && label.length > 15) {
-                          displayLabel = label.slice(0, 12) + "...";
-                        }
-                        ctx.fillText(displayLabel, node.x, node.y + r + 4);
-                      }}
-                    />
-                  </Suspense>
+                          if (isSelected) {
+                            ctx.strokeStyle = "#ffffff";
+                            ctx.lineWidth = 2.5 / scale;
+                            ctx.stroke();
+                          }
+
+                          // Text Label (Inter font)
+                          const fontSize = Math.max(9, 11 / scale);
+                          ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+                          ctx.textAlign = "center";
+                          ctx.textBaseline = "top";
+                          ctx.fillStyle = "rgba(240, 230, 255, 0.95)";
+                          
+                          // Truncated labels if scale is zoomed out
+                          let displayLabel = label;
+                          if (scale < 0.8 && label.length > 15) {
+                            displayLabel = label.slice(0, 12) + "...";
+                          }
+                          ctx.fillText(displayLabel, x, y + r + 4);
+                        }}
+                      />
+                    </Suspense>
+                  </div>
                 )}
               </div>
 
