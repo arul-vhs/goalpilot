@@ -1,18 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, Sparkles, Loader2, Check, HelpCircle, Target, Clock, Zap } from "lucide-react";
+import { ArrowRight, ArrowLeft, Sparkles, Loader2, Check, HelpCircle, Target, Clock, Zap, Laptop, Briefcase, Heart, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { userState } from "@/lib/userState";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
   component: Onboarding,
 });
 
 const steps = [
+  { key: "full_name", question: "What is your full name?", helper: "How should GoalPilot address you?", placeholder: "e.g. John Doe" },
   { key: "current_focus", question: "What is your current focus?", helper: "One area pulling most of your attention right now.", placeholder: "e.g. Launching my SaaS side project" },
   { key: "daily_hours", question: "How many hours a day can you dedicate?", helper: "Be realistic — we'll plan around it.", placeholder: "2" },
   { key: "big_goal", question: "What is one big vague goal you want to achieve?", helper: "Fuzzy is fine. GoalPilot will sharpen it.", placeholder: "e.g. Become financially independent through software" },
@@ -45,7 +47,7 @@ function Onboarding() {
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0);
   
   const [step, setStep] = useState(0);
-  const [values, setValues] = useState({ current_focus: "", daily_hours: "", big_goal: "" });
+  const [values, setValues] = useState({ full_name: "", current_focus: "", daily_hours: "", big_goal: "" });
   const [saving, setSaving] = useState(false);
 
   // Strategy stage state
@@ -91,9 +93,12 @@ function Onboarding() {
   const fetchStrategies = async () => {
     setLoadingAdvice(true);
     try {
-      const res = await fetch("http://localhost:8000/consultation", {
+      const res = await fetch("http://localhost:8000/onboarding-advice", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...userState.getAuthHeaders()
+        },
         body: JSON.stringify({
           goal: values.big_goal,
           hours: values.daily_hours,
@@ -101,10 +106,11 @@ function Onboarding() {
         }),
       });
       const data = await res.json();
-      if (data.advice?.error) {
-        toast.error(data.advice.error);
+      const adviceObj = data.advice || data;
+      if (adviceObj?.error) {
+        toast.error(adviceObj.error);
       } else {
-        setAdvice(data.advice);
+        setAdvice(adviceObj);
       }
     } catch (e) {
       console.error(e);
@@ -125,7 +131,10 @@ function Onboarding() {
     try {
       const res = await fetch("http://localhost:8000/clarifying-questions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...userState.getAuthHeaders()
+        },
         body: JSON.stringify({
           goal: values.big_goal,
           strategy_id: strategyId,
@@ -145,9 +154,9 @@ function Onboarding() {
     setSaving(true);
     setStage(3);
     try {
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token;
-      if (!token) {
+      const token = userState.token;
+      const userId = userState.userId;
+      if (!token || !userId) {
         toast.error("Authentication session lost.");
         setStage(2);
         setSaving(false);
@@ -161,7 +170,7 @@ function Onboarding() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          ...userState.getAuthHeaders(),
         },
         body: JSON.stringify({
           goal: values.big_goal,
@@ -184,7 +193,7 @@ function Onboarding() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
+          ...userState.getAuthHeaders(),
         },
         body: JSON.stringify({ calendar_events: [] }),
       });
@@ -194,16 +203,28 @@ function Onboarding() {
         throw new Error(err.detail || "Failed to initialize schedule.");
       }
 
-      // 3. Complete Profile Onboarding
-      const { error } = await supabase.from("profiles").upsert({
-        id: session.user.id,
-        current_focus: values.current_focus,
-        daily_hours: Number(values.daily_hours),
-        big_goal: values.big_goal,
-        onboarding_completed: true,
+      // 3. Complete Profile Onboarding via Backend API
+      const onboardingRes = await fetch("http://localhost:8000/complete-onboarding", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...userState.getAuthHeaders(),
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          full_name: values.full_name,
+          preferences: {
+            current_focus: values.current_focus,
+            daily_hours: Number(values.daily_hours),
+            big_goal: values.big_goal,
+          },
+        }),
       });
 
-      if (error) throw error;
+      if (!onboardingRes.ok) {
+        const err = await onboardingRes.json();
+        throw new Error(err.detail || "Failed to complete onboarding.");
+      }
 
       toast.success("Flight plan locked. Let's take off!");
       navigate({ to: "/dashboard" });
@@ -259,18 +280,108 @@ function Onboarding() {
 
               <div className="mt-8">
                 {current.key === "big_goal" ? (
-                  <Textarea
-                    autoFocus
-                    rows={4}
-                    placeholder={current.placeholder}
-                    value={value}
-                    onChange={(e) => setValues({ ...values, [current.key]: e.target.value })}
-                    className="bg-background/40 text-base"
-                  />
+                  <div className="space-y-4">
+                    <Textarea
+                      autoFocus
+                      rows={4}
+                      placeholder={current.placeholder}
+                      value={value}
+                      onChange={(e) => setValues({ ...values, big_goal: e.target.value })}
+                      className="bg-background/40 text-base"
+                    />
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs text-muted-foreground font-medium px-1">Suggestions:</span>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          "Build a SaaS",
+                          "Learn Python",
+                          "Lose 10kg",
+                          "Write a Book",
+                          "Launch a Newsletter",
+                        ].map((sug) => (
+                          <button
+                            key={sug}
+                            type="button"
+                            onClick={() => {
+                              setValues({ ...values, big_goal: sug });
+                            }}
+                            className="text-xs bg-white/5 hover:bg-white/10 text-foreground border border-border px-3 py-1.5 rounded-full transition-all duration-200"
+                          >
+                            + {sug}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : current.key === "daily_hours" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[
+                      { label: "🌙 Side Hustle (1-2h)", hours: "2", desc: "For part-time passion projects" },
+                      { label: "⚖️ Balanced (3-5h)", hours: "4", desc: "For regular study & focus" },
+                      { label: "🔥 All In (8h+)", hours: "8", desc: "For full-time execution mode" },
+                    ].map((card) => (
+                      <button
+                        key={card.hours}
+                        type="button"
+                        onClick={() => {
+                          setValues({ ...values, daily_hours: card.hours });
+                        }}
+                        className={`flex flex-col text-left p-5 rounded-2xl border transition-all duration-300 ${
+                          values.daily_hours === card.hours
+                            ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(168,85,247,0.25)] text-foreground scale-[1.02]"
+                            : "bg-background/40 border-border hover:bg-background/60 text-muted-foreground"
+                        }`}
+                      >
+                        <span className="text-base font-bold text-foreground mb-1">{card.label}</span>
+                        <span className="text-xs text-muted-foreground leading-normal">{card.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : current.key === "current_focus" ? (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {[
+                        { label: "Tech", value: "Tech", icon: Laptop, color: "text-blue-400" },
+                        { label: "Business", value: "Business", icon: Briefcase, color: "text-emerald-400" },
+                        { label: "Health", value: "Health", icon: Heart, color: "text-rose-400" },
+                        { label: "Creative", value: "Creative", icon: Palette, color: "text-amber-400" },
+                      ].map((card) => {
+                        const IconComponent = card.icon;
+                        return (
+                          <button
+                            key={card.value}
+                            type="button"
+                            onClick={() => {
+                              setValues({ ...values, current_focus: card.value });
+                            }}
+                            className={`flex flex-col items-center justify-center p-6 rounded-2xl border transition-all duration-300 ${
+                              values.current_focus === card.value
+                                ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(168,85,247,0.25)] text-foreground scale-[1.02]"
+                                : "bg-background/40 border-border hover:bg-background/60 text-muted-foreground"
+                            }`}
+                          >
+                            <IconComponent className={`h-8 w-8 mb-3 ${card.color}`} />
+                            <span className="text-sm font-semibold text-foreground">{card.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <span className="text-xs text-muted-foreground px-1">Or type a custom focus area:</span>
+                      <Input
+                        type="text"
+                        placeholder="e.g. Learning Japanese, Marathon Prep"
+                        value={values.current_focus}
+                        onChange={(e) => setValues({ ...values, current_focus: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === "Enter") nextQuestion(); }}
+                        className="bg-background/40 text-base h-12"
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <Input
                     autoFocus
-                    type={current.key === "daily_hours" ? "number" : "text"}
+                    type="text"
                     placeholder={current.placeholder}
                     value={value}
                     onChange={(e) => setValues({ ...values, [current.key]: e.target.value })}

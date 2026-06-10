@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { userState } from "@/lib/userState";
 
 type Message = {
   role: "user" | "assistant";
@@ -40,8 +41,7 @@ export function FocusCoach({ collapsed }: { collapsed?: boolean }) {
     setSending(true);
 
     try {
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token;
+      const token = userState.token;
       if (!token) {
         toast.error("Authentication expired. Please log in again.");
         return;
@@ -57,7 +57,7 @@ export function FocusCoach({ collapsed }: { collapsed?: boolean }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          ...userState.getAuthHeaders()
         },
         body: JSON.stringify({
           message: textToSend,

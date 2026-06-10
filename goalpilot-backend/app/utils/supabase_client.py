@@ -16,3 +16,12 @@ def get_supabase_client(auth_header: str = None) -> Client:
         return create_client(url, key, options=options)
         
     return create_client(url, key)
+
+def get_supabase_admin_client() -> Client:
+    """
+    Creates and returns a Supabase client using the SERVICE_ROLE_KEY if present,
+    allowing backend operations to bypass Row Level Security (RLS).
+    """
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+    return create_client(url, key)

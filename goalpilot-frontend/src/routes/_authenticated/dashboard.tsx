@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
+import { userState } from "@/lib/userState";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -56,19 +57,48 @@ function Dashboard() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [goals, setGoals] = useState<any[]>([]);
+  const [selectedGoal, setSelectedGoal] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [reoptimizing, setReoptimizing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [timeLeftStr, setTimeLeftStr] = useState("00h 00m 00s");
+
+  const loadGoals = useCallback(async () => {
+    try {
+      const userId = userState.userId;
+      if (!userId) return;
+      const res = await fetch(`http://localhost:8000/user-goals/${userId}`, {
+        headers: userState.getAuthHeaders()
+      });
+      if (!res.ok) throw new Error("Failed to fetch goals");
+      const data = await res.json();
+      setGoals(data);
+      
+      if (data.length > 0) {
+        setSelectedGoal((prev: any) => {
+          if (prev && data.some((g: any) => g.id === prev.id)) {
+            return data.find((g: any) => g.id === prev.id);
+          }
+          return data[0];
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Could not fetch goals list.");
+    }
+  }, []);
 
   const loadProfileAndTasks = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
+      const userId = userState.userId;
+      if (!userId) return;
+
       // Fetch Profile
       const { data: profData } = await supabase
         .from("profiles")
         .select("display_name,current_focus,daily_hours,big_goal,onboarding_completed")
-        .eq("id", user.id)
+        .eq("id", userId)
         .maybeSingle();
 
       if (!profData || !profData.onboarding_completed) {
@@ -77,10 +107,13 @@ function Dashboard() {
       }
       setProfile(profData as Profile);
 
+      // Load goals from API
+      await loadGoals();
+
       // Fetch Tasks
       const { data: tasksData, error: tasksError } = await supabase
         .from("tasks")
-        .select("id,title,description,priority,effort,depends_on,completed")
+        .select("id,title,description,priority,effort,depends_on,completed,goal_id")
         .order("created_at", { ascending: true });
 
       if (tasksError) throw tasksError;
@@ -92,27 +125,74 @@ function Dashboard() {
           description: parsed.notes,
           scheduled_start: parsed.scheduled_start,
           scheduled_end: parsed.scheduled_end,
-          is_goal: parsed.is_goal
+          is_goal: parsed.is_goal,
+          goal_id: t.goal_id
         } as any;
       });
 
-      // Filter out top-level goal from milestones list
       setTasks(parsedTasks);
     } catch (err: any) {
       toast.error(err.message || "Failed to load dashboard data.");
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, [navigate, loadGoals]);
+
+  useEffect(() => {
+    if (!profile?.daily_hours) {
+      setTimeLeftStr("00h 00m 00s");
+      return;
+    }
+    const updateCountdown = () => {
+      const now = new Date();
+      const localH = now.getHours();
+      const localM = now.getMinutes();
+      const localS = now.getSeconds();
+      
+      const dailyHours = profile.daily_hours || 2;
+      
+      // Focus window starts at 09:00 AM local time
+      const startHour = 9;
+      const endHour = startHour + dailyHours;
+      
+      const currentTimeInHours = localH + localM / 60 + localS / 3600;
+      
+      const pad = (num: number) => String(num).padStart(2, "0");
+
+      if (currentTimeInHours < startHour) {
+        // Before focus window starts
+        const diffHrs = startHour - currentTimeInHours;
+        const h = Math.floor(diffHrs);
+        const m = Math.floor((diffHrs - h) * 60);
+        const s = Math.floor(((diffHrs - h) * 60 - m) * 60);
+        setTimeLeftStr(`${pad(h)}h ${pad(m)}m ${pad(s)}s (Starts 9 AM)`);
+      } else if (currentTimeInHours >= startHour && currentTimeInHours < endHour) {
+        // Inside focus window
+        const diffHrs = endHour - currentTimeInHours;
+        const h = Math.floor(diffHrs);
+        const m = Math.floor((diffHrs - h) * 60);
+        const s = Math.floor(((diffHrs - h) * 60 - m) * 60);
+        setTimeLeftStr(`${pad(h)}h ${pad(m)}m ${pad(s)}s left`);
+      } else {
+        // After focus window
+        setTimeLeftStr("00h 00m 00s (Done)");
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [profile?.daily_hours]);
 
   useEffect(() => {
     loadProfileAndTasks();
   }, [loadProfileAndTasks]);
 
-  // Separate goals and tasks
+  // Filter milestones based on selected goal
   const milestones = useMemo(() => {
-    return tasks.filter((t: any) => !t.is_goal);
-  }, [tasks]);
+    if (!selectedGoal) return [];
+    return tasks.filter((t: any) => !t.is_goal && t.goal_id === selectedGoal.id);
+  }, [tasks, selectedGoal]);
 
   const completedCount = useMemo(() => {
     return milestones.filter(t => t.completed).length;
@@ -141,15 +221,14 @@ function Dashboard() {
   const handleReschedule = async () => {
     setReoptimizing(true);
     try {
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token;
+      const token = userState.token;
       if (!token) return;
 
       const res = await fetch("http://localhost:8000/schedule", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          ...userState.getAuthHeaders()
         },
         body: JSON.stringify({ calendar_events: [] })
       });
@@ -161,6 +240,38 @@ function Dashboard() {
       toast.error(e.message || "Could not reschedule.");
     } finally {
       setReoptimizing(false);
+    }
+  };
+
+  const handleSyncToCalendar = async () => {
+    if (!selectedGoal) return;
+    setSyncing(true);
+    try {
+      const token = userState.token;
+      if (!token) {
+        toast.error("Session token expired.");
+        return;
+      }
+
+      const res = await fetch(`http://localhost:8000/sync-goal-to-calendar/${selectedGoal.id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...userState.getAuthHeaders()
+        }
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Sync failed.");
+      }
+      
+      toast.success("Tasks scheduled around your busy hours!");
+      await loadProfileAndTasks();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to sync to calendar.");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -189,18 +300,63 @@ function Dashboard() {
               <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5 text-primary-glow" /> Mission control
               </div>
-              <h1 className="mt-2 text-4xl font-bold tracking-tight leading-tight">
-                Your target goal: <span className="gradient-text">{profile?.big_goal}</span>
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Current focus: <span className="text-foreground font-medium">{profile?.current_focus}</span> · Working {profile?.daily_hours}h/day
-              </p>
+              
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mt-2">
+                <div className="flex-1 w-full">
+                  <h1 className="text-4xl font-bold tracking-tight leading-tight">
+                    Active Mission: <span className="gradient-text">{selectedGoal?.title || profile?.big_goal}</span>
+                  </h1>
+                  <p className="mt-2 text-muted-foreground">
+                    Current focus: <span className="text-foreground font-medium">{profile?.current_focus}</span> · Working {profile?.daily_hours}h/day
+                  </p>
+                  
+                  {/* Glowing progress bar for Active Mission */}
+                  <div className="mt-4 max-w-2xl bg-white/5 border border-white/10 rounded-2xl p-4 shadow-sm backdrop-blur-sm">
+                    <div className="flex justify-between items-center text-xs text-muted-foreground mb-1.5 font-medium">
+                      <span className="flex items-center gap-1.5">
+                        <Target className="h-3.5 w-3.5 text-primary-glow" /> Roadmap Completion Progress
+                      </span>
+                      <span className="text-primary-glow font-bold text-sm">{progressPercent}%</span>
+                    </div>
+                    <div className="w-full bg-slate-950/60 rounded-full h-3 overflow-hidden border border-white/5 p-[1px]">
+                      <motion.div 
+                        className="h-full bg-gradient-to-r from-primary to-primary-glow rounded-full shadow-[0_0_12px_rgba(168,85,247,0.6)]"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progressPercent}%` }}
+                        transition={{ duration: 0.6, ease: "easeOut" }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Goal Selector Dropdown */}
+                {goals.length > 1 && (
+                  <div className="flex items-center gap-2 shrink-0 bg-white/5 border border-border rounded-xl px-3 py-1.5 text-xs self-start md:self-center">
+                    <span className="text-muted-foreground uppercase tracking-wider font-semibold">Change Target:</span>
+                    <select
+                      value={selectedGoal?.id || ""}
+                      onChange={(e) => {
+                        const target = goals.find(g => g.id === e.target.value);
+                        if (target) setSelectedGoal(target);
+                      }}
+                      className="text-xs font-semibold text-foreground bg-transparent border-0 outline-none cursor-pointer focus:ring-0"
+                    >
+                      {goals.map((g: any) => (
+                        <option key={g.id} value={g.id} className="bg-slate-950 text-foreground">
+                          {g.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
             </motion.div>
 
             {/* Stats */}
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="mt-8 grid gap-4 grid-cols-2 md:grid-cols-4">
               {[
-                { label: "Daily limit", value: `${profile?.daily_hours ?? 0}h`, icon: Clock },
+                { label: "Daily quota", value: `${profile?.daily_hours ?? 0}h`, icon: Clock },
+                { label: "Time Left Today", value: timeLeftStr, icon: Clock, highlight: true },
                 { label: "Milestones", value: `${completedCount}/${milestones.length}`, icon: Target },
                 { label: "Progress completion", value: `${progressPercent}%`, icon: TrendingUp },
               ].map((s, i) => (
@@ -209,13 +365,17 @@ function Dashboard() {
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: 0.1 + i * 0.05 }}
-                  className="glass rounded-2xl p-5 border border-border bg-background/25"
+                  className={`glass rounded-2xl p-5 border border-border bg-background/25 ${
+                    s.highlight ? "border-primary/20 shadow-[0_0_15px_rgba(168,85,247,0.05)]" : ""
+                  }`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">{s.label}</span>
-                    <s.icon className="h-4 w-4 text-primary-glow" />
+                    <s.icon className={`h-4 w-4 ${s.highlight ? "text-primary animate-pulse" : "text-primary-glow"}`} />
                   </div>
-                  <div className="mt-2 text-3xl font-semibold">{s.value}</div>
+                  <div className={`mt-2 font-semibold ${s.highlight ? "text-base md:text-lg text-primary-glow font-mono" : "text-3xl"}`}>
+                    {s.value}
+                  </div>
                 </motion.div>
               ))}
             </div>
@@ -227,23 +387,35 @@ function Dashboard() {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="mt-10 glass-strong border border-border rounded-2xl p-6 lg:p-8"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight">Active Roadmap</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
                     Action items generated and sequenced by GoalPilot AI.
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={reoptimizing}
-                  onClick={handleReschedule}
-                  className="border-border bg-white/5 hover:bg-white/10 gap-1.5"
-                >
-                  {reoptimizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  Optimize Schedule
-                </Button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {selectedGoal && (
+                    <Button
+                      disabled={syncing}
+                      onClick={handleSyncToCalendar}
+                      className="gap-2 bg-gradient-to-r from-primary to-primary-glow text-primary-foreground btn-glow border-0"
+                    >
+                      {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      ✨ Smart Sync to Calendar
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={reoptimizing}
+                    onClick={handleReschedule}
+                    className="border-border bg-white/5 hover:bg-white/10 gap-1.5"
+                  >
+                    {reoptimizing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Optimize Schedule
+                  </Button>
+                </div>
               </div>
 
               {milestones.length === 0 ? (

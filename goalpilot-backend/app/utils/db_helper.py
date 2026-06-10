@@ -24,7 +24,9 @@ def save_tasks_to_db(supabase_client: Client, user_id: str, big_goal_title: str,
         "priority": "critical",
         "effort": 5,
         "depends_on": None,
-        "completed": False
+        "completed": False,
+        "status": "pending",
+        "goal_id": None
     }
     
     # 2. Map temp IDs from LLM to UUIDs
@@ -72,7 +74,9 @@ def save_tasks_to_db(supabase_client: Client, user_id: str, big_goal_title: str,
             "priority": pri,
             "effort": effort_int,
             "depends_on": db_dep,
-            "completed": False
+            "completed": False,
+            "status": "pending",
+            "goal_id": goal_id
         })
         
     result = supabase_client.table("tasks").insert(to_insert).execute()

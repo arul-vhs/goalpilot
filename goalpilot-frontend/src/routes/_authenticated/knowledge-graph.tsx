@@ -378,6 +378,7 @@ function KnowledgeGraphPage() {
                         graphData={graphData}
                         width={size.w}
                         height={size.h}
+                        nodeLabel={(node: any) => node.title}
                         backgroundColor="rgba(0,0,0,0)"
                         nodeRelSize={4}
                         linkColor={(link: any) => {

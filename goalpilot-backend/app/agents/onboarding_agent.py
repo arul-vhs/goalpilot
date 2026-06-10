@@ -14,9 +14,9 @@ def get_onboarding_advice(user_responses: dict) -> dict:
     Their current focus/background: "{user_responses.get('focus')}"
     
     Act as a professional executive coach. Propose exactly 3 distinct strategies for them to achieve this goal:
-    1. Strategy A: Aggressive Sprint (High intensity, fast milestones)
-    2. Strategy B: Balanced & Steady (Sustainable daily habits, standard progression)
-    3. Strategy C: Research & Skill-First (Focus on learning/auditing before building)
+    1. Fast: Aggressive sprint, high intensity, rapid milestone achievements.
+    2. Balanced: Steady and sustainable progression with consistent habits.
+    3. Lean: Minimizing resource usage, focusing on research and validation first.
 
     Compare them based on their available time. Determine which strategy is best suited for them and explain why in the 'reasoning'.
     
@@ -24,15 +24,32 @@ def get_onboarding_advice(user_responses: dict) -> dict:
     {{
       "strategies": [
         {{
-          "id": "aggressive",
-          "name": "Aggressive Sprint",
+          "id": "fast",
+          "name": "Fast",
           "description": "...",
           "duration": "e.g. 4 Weeks",
           "pros": ["...", "..."],
           "cons": ["...", "..."],
           "recommended": true/false
         }},
-        ...
+        {{
+          "id": "balanced",
+          "name": "Balanced",
+          "description": "...",
+          "duration": "e.g. 8 Weeks",
+          "pros": ["...", "..."],
+          "cons": ["...", "..."],
+          "recommended": true/false
+        }},
+        {{
+          "id": "lean",
+          "name": "Lean",
+          "description": "...",
+          "duration": "e.g. 12 Weeks",
+          "pros": ["...", "..."],
+          "cons": ["...", "..."],
+          "recommended": true/false
+        }}
       ],
       "reasoning": "Detailed explanation of why the recommended strategy is best suited for their profile."
     }}

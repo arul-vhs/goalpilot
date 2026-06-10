@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Calendar as CalendarIcon, Sparkles, RefreshCw, AlertCircle, Clock, Link2, ShieldAlert, Check } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { format, addDays, startOfWeek, parseISO } from "date-fns";
+import { userState } from "@/lib/userState";
 
 export const Route = createFileRoute("/_authenticated/calendar")({
   component: CalendarPage,
@@ -135,8 +136,7 @@ function CalendarPage() {
   const handleSmartReschedule = async () => {
     setRescheduling(true);
     try {
-      const session = (await supabase.auth.getSession()).data.session;
-      const token = session?.access_token;
+      const token = userState.token;
       if (!token) {
         toast.error("Session token expired.");
         setRescheduling(false);
@@ -154,7 +154,7 @@ function CalendarPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          ...userState.getAuthHeaders()
         },
         body: JSON.stringify({
           calendar_events: calendarEventsToSend,
