@@ -11,6 +11,7 @@ import { format, parseISO } from "date-fns";
 import { userState, useUserState } from "@/lib/userState";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { API_URL } from "@/lib/api-config";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -97,7 +98,7 @@ function Dashboard() {
 
   const loadGoals = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8000/user-goals", {
+      const res = await fetch(`${API_URL}/user-goals`, {
         headers: userState.getAuthHeaders()
       });
       if (!res.ok) throw new Error("Failed to fetch goals");
@@ -115,7 +116,7 @@ function Dashboard() {
     if (!userId) return;
     const fetchMissionsHistory = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/user-goals/${userId}`, {
+        const res = await fetch(`${API_URL}/user-goals/${userId}`, {
           headers: userState.getAuthHeaders(),
         });
         if (res.ok) {
@@ -141,7 +142,7 @@ function Dashboard() {
 
   const checkMissedTasks = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8000/check-missed-tasks", {
+      const res = await fetch(`${API_URL}/check-missed-tasks`, {
         method: "POST",
         headers: userState.getAuthHeaders(),
       });
@@ -158,7 +159,7 @@ function Dashboard() {
   const loadTimeline = useCallback(async () => {
     setLoadingTimeline(true);
     try {
-      const res = await fetch("http://localhost:8000/calendar-timeline", {
+      const res = await fetch(`${API_URL}/calendar-timeline`, {
         headers: userState.getAuthHeaders(),
       });
       if (res.ok) {
@@ -312,7 +313,7 @@ function Dashboard() {
       const token = userState.token;
       if (!token) return;
 
-      const res = await fetch("http://localhost:8000/schedule", {
+      const res = await fetch(`${API_URL}/schedule`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -335,7 +336,7 @@ function Dashboard() {
     setReoptimizing(true);
     setIsOpenOptimizeDialog(false);
     try {
-      const res = await fetch("http://localhost:8000/request-reschedule", {
+      const res = await fetch(`${API_URL}/request-reschedule`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -362,7 +363,7 @@ function Dashboard() {
     e.stopPropagation();
     setReschedulingTaskIds(prev => ({ ...prev, [taskId]: true }));
     try {
-      const res = await fetch(`http://localhost:8000/reschedule-task/${taskId}`, {
+      const res = await fetch(`${API_URL}/reschedule-task/${taskId}`, {
         method: "POST",
         headers: userState.getAuthHeaders()
       });
@@ -410,7 +411,7 @@ function Dashboard() {
         return;
       }
 
-      const res = await fetch(`http://localhost:8000/sync-goal-to-calendar/${selectedGoal.id}`, {
+      const res = await fetch(`${API_URL}/sync-goal-to-calendar/${selectedGoal.id}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -437,7 +438,7 @@ function Dashboard() {
     setNewMissionStep(2);
     setAnalyzingMission(true);
     try {
-      const res = await fetch("http://localhost:8000/onboarding-advice", {
+      const res = await fetch(`${API_URL}/onboarding-advice`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -469,7 +470,7 @@ function Dashboard() {
     setNewMissionStep(3);
     setCreatingMission(true);
     try {
-      const res = await fetch("http://localhost:8000/create-goal", {
+      const res = await fetch(`${API_URL}/create-goal`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -500,7 +501,7 @@ function Dashboard() {
         }
       }
 
-      const scheduleRes = await fetch("http://localhost:8000/schedule", {
+      const scheduleRes = await fetch(`${API_URL}/schedule`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

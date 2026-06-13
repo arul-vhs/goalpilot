@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { userState, useUserState } from "@/lib/userState";
+import { API_URL } from "@/lib/api-config";
 
 export const Route = createFileRoute("/_authenticated/knowledge-graph")({
   component: KnowledgeGraphPage,
@@ -248,7 +249,7 @@ function KnowledgeGraphPage() {
       }
 
       // 2. Fetch goals
-      const goalsRes = await fetch("http://localhost:8000/user-goals", {
+      const goalsRes = await fetch(`${API_URL}/user-goals`, {
         headers: userState.getAuthHeaders()
       });
       let fetchedGoals = [];

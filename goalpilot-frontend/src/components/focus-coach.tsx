@@ -9,6 +9,7 @@ import { useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { userState } from "@/lib/userState";
+import { API_URL } from "@/lib/api-config";
 
 type Message = {
   role: "user" | "assistant";
@@ -53,7 +54,7 @@ export function FocusCoach({ collapsed }: { collapsed?: boolean }) {
         content: m.content
       }));
 
-      const res = await fetch("http://localhost:8000/chat", {
+      const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

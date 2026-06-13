@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { format, addDays, startOfWeek, parseISO } from "date-fns";
 import { userState, useUserState } from "@/lib/userState";
+import { API_URL } from "@/lib/api-config";
 
 export const Route = createFileRoute("/_authenticated/calendar")({
   component: CalendarPage,
@@ -157,7 +158,7 @@ function CalendarPage() {
         end: e.end
       }));
 
-      const res = await fetch("http://localhost:8000/schedule", {
+      const res = await fetch(`${API_URL}/schedule`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

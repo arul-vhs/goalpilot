@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { userState, useUserState } from "@/lib/userState";
+import { API_URL } from "@/lib/api-config";
 
 export const Route = createFileRoute("/_authenticated/kanban")({
   component: KanbanBoardPage,
@@ -66,7 +67,7 @@ function KanbanBoardPage() {
 
   const loadGoals = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8000/user-goals", {
+      const res = await fetch(`${API_URL}/user-goals`, {
         headers: userState.getAuthHeaders()
       });
       if (!res.ok) throw new Error("Failed to fetch goals");
@@ -199,7 +200,7 @@ function KanbanBoardPage() {
     const toastId = toast.loading("AI recalculating calendar blocks...");
 
     try {
-      const res = await fetch("http://localhost:8000/manual-override", {
+      const res = await fetch(`${API_URL}/manual-override`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

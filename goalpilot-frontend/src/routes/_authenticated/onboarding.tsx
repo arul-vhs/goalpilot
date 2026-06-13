@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { userState } from "@/lib/userState";
+import { API_URL } from "@/lib/api-config";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
   component: Onboarding,
@@ -83,7 +84,7 @@ function Onboarding() {
         return;
       }
 
-      const onboardingRes = await fetch("http://localhost:8000/complete-onboarding", {
+      const onboardingRes = await fetch(`${API_URL}/complete-onboarding`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
