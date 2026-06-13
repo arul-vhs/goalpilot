@@ -1,5 +1,5 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, Network, LogOut, Sparkles, Calendar as CalendarIcon, Plus, Target, Settings, Loader2 } from "lucide-react";
+import { LayoutDashboard, Network, LogOut, Sparkles, Calendar as CalendarIcon, Plus, Target, Settings, Loader2, Kanban } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter, useSidebar,
@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Knowledge Graph", url: "/knowledge-graph", icon: Network },
+  { title: "Kanban Board", url: "/kanban", icon: Kanban },
   { title: "Calendar", url: "/calendar", icon: CalendarIcon },
 ];
 

@@ -916,3 +916,103 @@ async def get_calendar_timeline(current_user: Any = Depends(get_current_user), a
         "timezone": str(user_tz),
         "timeline": timeline_items
     }
+
+class ManualOverrideRequest(BaseModel):
+    task_id: str
+    new_column: str
+
+@app.post("/manual-override")
+async def manual_override(data: ManualOverrideRequest, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Handles Kanban drag-and-drop overrides. Updates status, sets priority to 10 for in_progress, 
+    and triggers reschedule.
+    """
+    user_id = current_user.id
+    supabase_client = get_supabase_client(authorization)
+    
+    task_id = data.task_id
+    new_column = data.new_column # 'backlog' | 'todo' | 'in_progress' | 'completed'
+    
+    # 1. Fetch the task
+    try:
+        task_res = supabase_client.table("tasks").select("*").eq("id", task_id).eq("user_id", user_id).maybe_single().execute()
+        task = task_res.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch task: {str(e)}")
+        
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    # 2. Map columns to database fields
+    update_row = {}
+    if new_column == "completed":
+        update_row["completed"] = True
+        update_row["completion_status"] = "completed"
+    elif new_column == "in_progress":
+        update_row["completed"] = False
+        update_row["completion_status"] = "in_progress"
+        update_row["priority_score"] = 10
+        
+        # Schedule immediately starting from now
+        import pytz
+        from datetime import datetime, timedelta
+        try:
+            # Fetch timezone
+            busy_times, user_tz = get_busy_times(user_id)
+        except Exception:
+            user_tz = pytz.utc
+            
+        now_tz = datetime.now(user_tz)
+        update_row["scheduled_at"] = now_tz.isoformat()
+        
+        # Also update scheduled start and end in description JSON
+        try:
+            desc_raw = task.get("description")
+            desc_data = json.loads(desc_raw) if desc_raw else {}
+        except Exception:
+            desc_data = {"notes": task.get("description") or ""}
+            
+        effort = task.get("effort", 2)
+        duration_minutes = min(effort, 4) * 60
+        end_tz = now_tz + timedelta(minutes=duration_minutes)
+        
+        desc_data["scheduled_start"] = now_tz.isoformat()
+        desc_data["scheduled_end"] = end_tz.isoformat()
+        update_row["description"] = json.dumps(desc_data)
+        
+    elif new_column == "todo":
+        update_row["completed"] = False
+        update_row["completion_status"] = "pending"
+        update_row["priority_score"] = 5
+    elif new_column == "backlog":
+        update_row["completed"] = False
+        update_row["completion_status"] = "backlog"
+        update_row["scheduled_at"] = None
+        
+        try:
+            desc_raw = task.get("description")
+            desc_data = json.loads(desc_raw) if desc_raw else {}
+        except Exception:
+            desc_data = {"notes": task.get("description") or ""}
+            
+        desc_data["scheduled_start"] = None
+        desc_data["scheduled_end"] = None
+        update_row["description"] = json.dumps(desc_data)
+        
+    # 3. Update the task
+    try:
+        supabase_client.table("tasks").update(update_row).eq("id", task_id).eq("user_id", user_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
+        
+    # 4. Trigger auto-reschedule
+    try:
+        # Re-run schedule algorithm for all tasks around this manual choice
+        await reschedule_all_endpoint(current_user, authorization)
+    except Exception as e:
+        print("Failed to auto-reschedule after manual override:", e)
+        
+    return {
+        "status": "success",
+        "message": f"Task updated to {new_column} and reschedule triggered."
+    }

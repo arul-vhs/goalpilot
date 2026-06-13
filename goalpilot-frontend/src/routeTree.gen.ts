@@ -13,6 +13,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedKnowledgeGraphRouteImport } from './routes/_authenticated/knowledge-graph'
+import { Route as AuthenticatedKanbanRouteImport } from './routes/_authenticated/kanban'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated/calendar'
 
@@ -36,6 +37,11 @@ const AuthenticatedKnowledgeGraphRoute =
     path: '/knowledge-graph',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedKanbanRoute = AuthenticatedKanbanRouteImport.update({
+  id: '/kanban',
+  path: '/kanban',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/kanban': typeof AuthenticatedKanbanRoute
   '/knowledge-graph': typeof AuthenticatedKnowledgeGraphRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
 }
@@ -58,6 +65,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/calendar': typeof AuthenticatedCalendarRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/kanban': typeof AuthenticatedKanbanRoute
   '/knowledge-graph': typeof AuthenticatedKnowledgeGraphRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
 }
@@ -67,6 +75,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/kanban': typeof AuthenticatedKanbanRoute
   '/_authenticated/knowledge-graph': typeof AuthenticatedKnowledgeGraphRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
 }
@@ -76,16 +85,24 @@ export interface FileRouteTypes {
     | '/'
     | '/calendar'
     | '/dashboard'
+    | '/kanban'
     | '/knowledge-graph'
     | '/onboarding'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/calendar' | '/dashboard' | '/knowledge-graph' | '/onboarding'
+  to:
+    | '/'
+    | '/calendar'
+    | '/dashboard'
+    | '/kanban'
+    | '/knowledge-graph'
+    | '/onboarding'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/_authenticated/calendar'
     | '/_authenticated/dashboard'
+    | '/_authenticated/kanban'
     | '/_authenticated/knowledge-graph'
     | '/_authenticated/onboarding'
   fileRoutesById: FileRoutesById
@@ -125,6 +142,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedKnowledgeGraphRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/kanban': {
+      id: '/_authenticated/kanban'
+      path: '/kanban'
+      fullPath: '/kanban'
+      preLoaderRoute: typeof AuthenticatedKanbanRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -145,6 +169,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedKanbanRoute: typeof AuthenticatedKanbanRoute
   AuthenticatedKnowledgeGraphRoute: typeof AuthenticatedKnowledgeGraphRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
 }
@@ -152,6 +177,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedKanbanRoute: AuthenticatedKanbanRoute,
   AuthenticatedKnowledgeGraphRoute: AuthenticatedKnowledgeGraphRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
 }
