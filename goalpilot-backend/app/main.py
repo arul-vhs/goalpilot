@@ -588,3 +588,331 @@ async def get_user_goals_legacy(user_id: str, current_user: Any = Depends(get_cu
     if current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Forbidden: Cannot view another user's goals")
     return await get_user_goals(current_user, authorization)
+
+@app.post("/check-missed-tasks")
+async def check_missed_tasks(current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Observer check to scan for tasks that are scheduled in the past but remain incomplete.
+    """
+    import pytz
+    from datetime import datetime
+    supabase_client = get_supabase_client(authorization)
+    user_id = current_user.id
+    
+    try:
+        res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("completed", False).execute()
+        tasks = res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+        
+    missed_tasks = []
+    now_dt = datetime.now(pytz.utc)
+    for t in tasks:
+        # Exclude goals nodes
+        try:
+            desc_data = json.loads(t.get("description", "{}"))
+        except Exception:
+            desc_data = {}
+        if desc_data.get("is_goal", False):
+            continue
+            
+        sched_val = t.get("scheduled_at")
+        if sched_val:
+            try:
+                sched_dt = datetime.fromisoformat(sched_val.replace("Z", "+00:00")).astimezone(pytz.utc)
+                if sched_dt < now_dt:
+                    missed_tasks.append(t)
+            except Exception:
+                continue
+                
+    return {
+        "needs_rescheduling": len(missed_tasks) > 0,
+        "missed_tasks_count": len(missed_tasks),
+        "missed_tasks": missed_tasks
+    }
+
+@app.post("/reschedule-all")
+async def reschedule_all_endpoint(current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Triggers the smart rescheduler agent to reorganize overdue and upcoming tasks.
+    """
+    import pytz
+    from datetime import datetime
+    user_id = current_user.id
+    supabase_client = get_supabase_client(authorization)
+    
+    try:
+        prof_res = supabase_client.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+        profile_data = prof_res.data if prof_res else {}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load profile details: {str(e)}")
+        
+    daily_hours = profile_data.get("daily_hours") or 2.0
+    energy_level = profile_data.get("current_energy_level") or "medium"
+    active_goal_id = profile_data.get("last_active_goal_id")
+    
+    try:
+        busy_slots, user_tz = get_busy_times(user_id)
+        formatted_busy = []
+        for start_dt, end_dt in busy_slots:
+            formatted_busy.append({
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat()
+            })
+    except Exception:
+        formatted_busy = []
+        
+    try:
+        if active_goal_id:
+            tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("goal_id", active_goal_id).eq("completed", False).execute()
+        else:
+            tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("completed", False).execute()
+        tasks = tasks_res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tasks: {str(e)}")
+        
+    missed_tasks = []
+    upcoming_tasks = []
+    now_dt = datetime.now(pytz.utc)
+    
+    for t in tasks:
+        try:
+            desc_data = json.loads(t.get("description", "{}"))
+        except Exception:
+            desc_data = {}
+        if desc_data.get("is_goal", False):
+            continue
+            
+        sched_val = t.get("scheduled_at")
+        if sched_val:
+            try:
+                sched_dt = datetime.fromisoformat(sched_val.replace("Z", "+00:00")).astimezone(pytz.utc)
+                if sched_dt < now_dt:
+                    missed_tasks.append(t)
+                else:
+                    upcoming_tasks.append(t)
+            except Exception:
+                upcoming_tasks.append(t)
+        else:
+            upcoming_tasks.append(t)
+            
+    if not missed_tasks and not upcoming_tasks:
+        return {"status": "success", "message": "No tasks found to reschedule."}
+        
+    inputs = {
+        "missed_tasks": missed_tasks,
+        "upcoming_tasks": upcoming_tasks,
+        "calendar_busy_slots": formatted_busy,
+        "daily_hours": daily_hours,
+        "energy_level": energy_level,
+        "start_date": datetime.now().isoformat(),
+        "execution_plan": []
+    }
+    
+    from .agents.reschedule_agent import reschedule_agent
+    try:
+        res = reschedule_agent.invoke(inputs)
+        plan = res.get("execution_plan", [])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rescheduling agent failed: {str(e)}")
+        
+    updated_count = 0
+    for item in plan:
+        tid = item.get("task_id")
+        start_str = item.get("scheduled_start")
+        end_str = item.get("scheduled_end")
+        
+        if not tid or not start_str or not end_str:
+            continue
+            
+        orig_task = next((tk for tk in tasks if tk["id"] == tid), None)
+        if not orig_task:
+            continue
+            
+        try:
+            desc_data = json.loads(orig_task.get("description", "{}"))
+        except Exception:
+            desc_data = {}
+            
+        desc_data["scheduled_start"] = start_str
+        desc_data["scheduled_end"] = end_str
+        
+        prev_resched = orig_task.get("rescheduled_count") or 0
+        orig_sched = orig_task.get("original_scheduled_at") or orig_task.get("scheduled_at")
+        
+        update_row = {
+            "scheduled_at": start_str,
+            "description": json.dumps(desc_data),
+            "rescheduled_count": prev_resched + 1,
+            "completion_status": "rescheduled"
+        }
+        if orig_sched:
+            update_row["original_scheduled_at"] = orig_sched
+            
+        supabase_client.table("tasks").update(update_row).eq("id", tid).eq("user_id", user_id).execute()
+        updated_count += 1
+        
+    try:
+        admin_client = get_supabase_admin_client()
+        admin_client.table("profiles").update({"last_sync_at": datetime.now().isoformat()}).eq("id", user_id).execute()
+    except Exception as e:
+        print("Failed to update last_sync_at:", e)
+        
+    return {
+        "status": "success", 
+        "message": f"Successfully rescheduled {updated_count} tasks.", 
+        "execution_plan_count": len(plan)
+    }
+
+@app.post("/request-reschedule")
+async def request_reschedule(data: dict = None, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Manual trigger for rescheduling when user clicks 'I'm feeling overwhelmed'.
+    Can accept optional 'energy_level' parameter (defaulting to low).
+    """
+    user_id = current_user.id
+    supabase_client = get_supabase_client(authorization)
+    
+    energy = (data or {}).get("energy_level", "low")
+    
+    try:
+        supabase_client.table("profiles").update({"current_energy_level": energy}).eq("id", user_id).execute()
+    except Exception as e:
+        print("Failed to update profile energy level:", e)
+        
+    return await reschedule_all_endpoint(current_user, authorization)
+
+@app.post("/reschedule-task/{task_id}")
+async def reschedule_single_task(task_id: str, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Reschedules a single task by finding the next available slot in the user's calendar.
+    """
+    import pytz
+    from datetime import datetime, timedelta
+    supabase_client = get_supabase_client(authorization)
+    user_id = current_user.id
+    
+    # 1. Fetch the task
+    try:
+        task_res = supabase_client.table("tasks").select("*").eq("id", task_id).eq("user_id", user_id).maybe_single().execute()
+        task = task_res.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch task: {str(e)}")
+        
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+        
+    # 2. Fetch busy times and timezone
+    try:
+        busy_times, user_tz = get_busy_times(user_id)
+    except Exception as e:
+        # Fallback if calendar is not connected: use current time and find slot
+        user_tz = pytz.utc
+        busy_times = []
+        
+    # Determine task duration from effort (1-10)
+    effort = task.get("effort", 2)
+    duration_minutes = min(effort, 4) * 60
+    
+    # Find next free slot in calendar
+    slot_start = find_next_free_slot(busy_times, duration_minutes, user_tz)
+    
+    # Update task in Supabase
+    try:
+        desc_raw = task.get("description")
+        desc_data = {}
+        if desc_raw:
+            try:
+                desc_data = json.loads(desc_raw)
+            except Exception:
+                desc_data = {"notes": desc_raw}
+                
+        slot_end = slot_start + timedelta(minutes=duration_minutes)
+        desc_data["scheduled_start"] = slot_start.isoformat()
+        desc_data["scheduled_end"] = slot_end.isoformat()
+        
+        prev_resched = task.get("rescheduled_count") or 0
+        orig_sched = task.get("original_scheduled_at") or task.get("scheduled_at")
+        
+        update_row = {
+            "scheduled_at": slot_start.isoformat(),
+            "description": json.dumps(desc_data),
+            "rescheduled_count": prev_resched + 1,
+            "completion_status": "rescheduled"
+        }
+        if orig_sched:
+            update_row["original_scheduled_at"] = orig_sched
+            
+        supabase_client.table("tasks").update(update_row).eq("id", task_id).eq("user_id", user_id).execute()
+        
+        return {"status": "success", "task_id": task_id, "scheduled_at": slot_start.isoformat()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reschedule task: {str(e)}")
+
+@app.get("/calendar-timeline")
+async def get_calendar_timeline(current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Exposes user Google Calendar busy slots and scheduled tasks for timeline rendering.
+    """
+    import pytz
+    from datetime import datetime, timedelta
+    user_id = current_user.id
+    supabase_client = get_supabase_client(authorization)
+    
+    # 1. Fetch busy slots from Google Calendar
+    try:
+        busy_slots, user_tz = get_busy_times(user_id)
+        formatted_busy = []
+        for start_dt, end_dt in busy_slots:
+            formatted_busy.append({
+                "title": "Google Calendar Busy",
+                "start": start_dt.isoformat(),
+                "end": end_dt.isoformat(),
+                "is_busy": True
+            })
+    except Exception as e:
+        print("Calendar sync error for timeline:", e)
+        formatted_busy = []
+        user_tz = pytz.utc
+        
+    # 2. Fetch user's scheduled tasks
+    try:
+        tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("completed", False).execute()
+        tasks = tasks_res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tasks: {str(e)}")
+        
+    formatted_tasks = []
+    for t in tasks:
+        # Check if task is scheduled
+        sched_val = t.get("scheduled_at")
+        if sched_val:
+            try:
+                # Effort defines duration (effort * 60 minutes)
+                effort = t.get("effort", 2)
+                duration_minutes = min(effort, 4) * 60
+                
+                # We can construct end time
+                sched_dt = datetime.fromisoformat(sched_val.replace("Z", "+00:00"))
+                end_dt = sched_dt + timedelta(minutes=duration_minutes)
+                
+                formatted_tasks.append({
+                    "id": t["id"],
+                    "title": t["title"],
+                    "start": sched_dt.isoformat(),
+                    "end": end_dt.isoformat(),
+                    "duration": duration_minutes,
+                    "is_busy": False,
+                    "priority": t.get("priority", "medium")
+                })
+            except Exception:
+                continue
+                
+    # Combine and sort all items by start time
+    timeline_items = formatted_busy + formatted_tasks
+    timeline_items.sort(key=lambda x: x["start"])
+    
+    return {
+        "timezone": str(user_tz),
+        "timeline": timeline_items
+    }
