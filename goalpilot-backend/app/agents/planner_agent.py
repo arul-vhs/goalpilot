@@ -14,35 +14,49 @@ class GraphState(TypedDict):
 def decomposition_node(state: GraphState):
     strategy = state['user_context'].get('strategy', 'balanced')
     clarifications = state['user_context'].get('clarifications', [])
-    hours = state['user_context'].get('daily_hours', 2)
-    focus = state['user_context'].get('current_focus', '')
+    
+    persona = state['user_context'].get('persona', {})
+    full_name = persona.get('full_name', 'User')
+    focus_area = persona.get('focus_area', 'General')
+    daily_hours = int(persona.get('daily_hours', 2))
+    work_style = persona.get('work_style', 'Deep Work')
+    user_level = persona.get('user_level', 'Beginner')
     
     clarifications_text = "\n".join([f"Q: {c.get('q')}\nA: {c.get('a')}" for c in clarifications])
     
     prompt = f"""
-    The user wants to achieve this goal: "{state['goal']}"
-    User Profile:
-    - Current focus/skills: "{focus}"
-    - Daily commitment: {hours} hours
-    - Selected Strategy: "{strategy}"
+    You are the personal execution coach for {full_name}.
+    User Persona:
+    - Focus Area: {focus_area}
+    - Available Time: {daily_hours} hours/day
+    - Work Style: {work_style}
+    - Experience Level: {user_level}
+    
+    The user's new goal is: "{state['goal']}"
+    
+    Selected Strategy: "{strategy}"
     
     Clarifying details gathered:
     {clarifications_text}
     
-    Break this goal into 6 to 8 highly actionable tasks structured in a logical flow.
-    Make sure some tasks depend on others (e.g. Task 2 depends on Task 1, Task 4 depends on Task 2 and 3) to form an interconnected graph.
+    Break this goal down into 6 to 8 highly actionable tasks structured in a logical flow.
+    Make sure some tasks depend on others to form an interconnected graph.
+    
+    Crucial Persona Adaptation Rules:
+    1. Smart Scaling: Since they only have {daily_hours} hours/day, no single task should have an effort greater than {daily_hours}. Split larger objectives into smaller, bite-sized tasks.
+    2. Tone & Depth Matching: Since the user level is "{user_level}", explain the tasks and descriptions matching this level (e.g. if Beginner, explain concepts simply and avoid overly technical jargon; if Expert, focus on advanced details).
     
     For each task, define:
     - id: A simple temp ID like "1", "2", "3"
     - title: Brief summary
     - description: Specific actions to perform
     - priority: "low", "medium", "high", or "critical"
-    - effort: An integer between 1 and 10 representing estimated time/difficulty (where 1 = 1 hour, 10 = 10+ hours)
+    - effort: An integer representing estimated time in hours. Because of the daily limit, effort MUST be between 1 and {daily_hours} (inclusive).
     - depends_on: The ID of a task it depends on, or null if it can start immediately.
     
     Return ONLY a JSON list of objects. Do not include markdown wraps.
     [
-      {{"id": "1", "title": "...", "description": "...", "priority": "medium", "effort": 3, "depends_on": null}},
+      {{"id": "1", "title": "...", "description": "...", "priority": "medium", "effort": {min(1, daily_hours)}, "depends_on": null}},
       ...
     ]
     """

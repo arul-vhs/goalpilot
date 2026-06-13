@@ -17,18 +17,32 @@ def run_coach_chat(supabase_client: Client, user_id: str, message: str, history:
     # Define tools within context so they access supabase_client and user_id directly
     @tool
     def list_tasks() -> str:
-        """Lists all goals and tasks currently defined for the user."""
+        """Lists all goals and tasks currently defined for the user's active goal/mission."""
         try:
-            res = supabase_client.table("tasks").select("*").eq("user_id", user_id).order("created_at").execute()
-            return json.dumps(res.data)
+            # Fetch active goal
+            prof_res = supabase_client.table("profiles").select("last_active_goal_id").eq("id", user_id).maybe_single().execute()
+            active_goal_id = prof_res.data.get("last_active_goal_id") if prof_res.data else None
+            
+            if active_goal_id:
+                subtasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("goal_id", active_goal_id).order("created_at").execute()
+                root_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("id", active_goal_id).execute()
+                all_tasks = (root_res.data or []) + (subtasks_res.data or [])
+                return json.dumps(all_tasks)
+            else:
+                res = supabase_client.table("tasks").select("*").eq("user_id", user_id).order("created_at").execute()
+                return json.dumps(res.data)
         except Exception as e:
             return f"Error listing tasks: {str(e)}"
 
     @tool
     def add_task(title: str, description: str, priority: str, effort: int, depends_on_id: str = None) -> str:
-        """Adds a new task for the user. priority must be 'low', 'medium', 'high', or 'critical'."""
+        """Adds a new task for the user's active goal. priority must be 'low', 'medium', 'high', or 'critical'."""
         try:
             dep = depends_on_id if depends_on_id else None
+            
+            # Fetch active goal
+            prof_res = supabase_client.table("profiles").select("last_active_goal_id").eq("id", user_id).maybe_single().execute()
+            active_goal_id = prof_res.data.get("last_active_goal_id") if prof_res.data else None
             
             # Metadata serialization
             desc_json = json.dumps({
@@ -45,7 +59,8 @@ def run_coach_chat(supabase_client: Client, user_id: str, message: str, history:
                 "priority": priority.lower() if priority.lower() in ["low", "medium", "high", "critical"] else "medium",
                 "effort": max(1, min(10, effort)),
                 "depends_on": dep,
-                "completed": False
+                "completed": False,
+                "goal_id": active_goal_id
             }
             res = supabase_client.table("tasks").insert(row).execute()
             return f"Task added successfully: {json.dumps(res.data)}"
@@ -63,14 +78,19 @@ def run_coach_chat(supabase_client: Client, user_id: str, message: str, history:
 
     @tool
     def reschedule_all() -> str:
-        """Triggers a rescheduling of all uncompleted tasks based on availability."""
+        """Triggers a rescheduling of all uncompleted tasks for the active goal based on availability."""
         try:
-            # Fetch tasks
-            tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).execute()
-            # Fetch profile
-            prof_res = supabase_client.table("profiles").select("daily_hours").eq("id", user_id).maybe_single().execute()
+            # Fetch active goal info
+            prof_res = supabase_client.table("profiles").select("daily_hours, last_active_goal_id").eq("id", user_id).maybe_single().execute()
             daily_hours = prof_res.data.get("daily_hours") if prof_res.data and prof_res.data.get("daily_hours") is not None else 2.0
+            active_goal_id = prof_res.data.get("last_active_goal_id") if prof_res.data else None
             
+            # Fetch tasks for active goal
+            if active_goal_id:
+                tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("goal_id", active_goal_id).execute()
+            else:
+                tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).execute()
+                
             from app.utils.scheduler import schedule_user_tasks
             scheduled = schedule_user_tasks(tasks_res.data, daily_hours, [])
             

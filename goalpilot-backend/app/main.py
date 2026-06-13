@@ -35,18 +35,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def get_current_user(authorization: Optional[str] = Header(None)) -> Any:
+    """
+    FastAPI dependency that extracts the Supabase user from the Authorization header JWT.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    token = authorization.split(" ")[1] if authorization and authorization.startswith("Bearer ") else None
+    if not token:
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+    try:
+        supabase_client = get_supabase_client(authorization)
+        user_res = supabase_client.auth.get_user(token)
+        if not user_res or not user_res.user:
+            raise Exception("No user found in session response.")
+        return user_res.user
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid JWT session: {str(e)}")
+
 @app.get("/")
 async def root():
     return {"message": "GoalPilot Backend is Live"}
 
 @app.post("/consultation")
-async def start_consultation(data: dict, authorization: Optional[str] = Header(None), x_user_id: Optional[str] = Header(None)):
+async def start_consultation(data: dict, current_user: Any = Depends(get_current_user)):
     # Expected keys: goal, hours, focus
     advice = get_onboarding_advice(data)
     return {"advice": advice}
 
 @app.post("/clarifying-questions")
-async def clarify(data: dict, authorization: Optional[str] = Header(None), x_user_id: Optional[str] = Header(None)):
+async def clarify(data: dict, current_user: Any = Depends(get_current_user)):
     # Expected keys: goal, strategy_id
     goal = data.get("goal")
     strategy_id = data.get("strategy_id")
@@ -57,26 +75,31 @@ async def clarify(data: dict, authorization: Optional[str] = Header(None), x_use
     return {"questions": questions}
 
 @app.post("/breakdown-goal")
-async def breakdown_goal(data: dict, authorization: Optional[str] = Header(None)):
+async def breakdown_goal(data: dict, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
     # Expected keys: goal, context (daily_hours, current_focus, strategy, clarifications)
     goal = data.get("goal")
     context = data.get("context", {})
-    
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
+    user_id = current_user.id
     
     # 1. Instantiate user-scoped client
     supabase_client = get_supabase_client(authorization)
-    
-    # 2. Get user info from JWT
-    token = authorization.split(" ")[1] if authorization and authorization.startswith("Bearer ") else None
+
+    # 2. Fetch profile (persona)
     try:
-        user_res = supabase_client.auth.get_user(token)
-        if not user_res or not user_res.user:
-            raise Exception("No user found in session response.")
-        user_id = user_res.user.id
+        profile_res = supabase_client.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+        profile_data = profile_res.data if profile_res else {}
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid JWT session: {str(e)}")
+        print("Failed to fetch profiles for planning context:", e)
+        profile_data = {}
+        
+    persona = {
+        "full_name": profile_data.get("display_name", "User"),
+        "daily_hours": profile_data.get("daily_hours", 2),
+        "focus_area": profile_data.get("focus_area") or profile_data.get("current_focus") or "General",
+        "work_style": profile_data.get("work_style", "Deep Work"),
+        "user_level": profile_data.get("user_level", "Beginner")
+    }
+    context["persona"] = persona
         
     # 3. Run LangGraph Planner Agent
     inputs = {"goal": goal, "user_context": context, "tasks": []}
@@ -88,36 +111,43 @@ async def breakdown_goal(data: dict, authorization: Optional[str] = Header(None)
         
     # 4. Save to Supabase using the user-scoped client
     try:
-        saved_tasks = save_tasks_to_db(supabase_client, user_id, goal, tasks)
-        return {"status": "success", "tasks": saved_tasks}
+        goal_id, saved_tasks = save_tasks_to_db(supabase_client, user_id, goal, tasks)
+        # Update last_active_goal_id in profiles
+        try:
+            admin_client = get_supabase_admin_client()
+            admin_client.table("profiles").update({"last_active_goal_id": goal_id}).eq("id", user_id).execute()
+        except Exception as e:
+            print("Failed to update profile last_active_goal_id:", e)
+            
+        return {"status": "success", "goal_id": goal_id, "tasks": saved_tasks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database write failed: {str(e)}")
 
+@app.post("/create-goal")
+async def create_goal(data: dict, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Creates a new goal/mission, generates a roadmap, and locks it as the user's active goal.
+    """
+    return await breakdown_goal(data, current_user, authorization)
+
 @app.post("/schedule")
-async def schedule_tasks(data: dict, authorization: Optional[str] = Header(None)):
+async def schedule_tasks(data: dict, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
     # Expected keys: calendar_events (list), start_date (optional ISO string)
     calendar_events = data.get("calendar_events", [])
     start_date = data.get("start_date")
+    user_id = current_user.id
     
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-        
     supabase_client = get_supabase_client(authorization)
-    
-    token = authorization.split(" ")[1] if authorization and authorization.startswith("Bearer ") else None
-    try:
-        user_res = supabase_client.auth.get_user(token)
-        if not user_res or not user_res.user:
-            raise Exception("No user found in session response.")
-        user_id = user_res.user.id
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid JWT session: {str(e)}")
         
-    # 1. Fetch user tasks and profile focus hours
-    tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).execute()
-    prof_res = supabase_client.table("profiles").select("daily_hours").eq("id", user_id).maybe_single().execute()
-    
+    # 1. Fetch user tasks and profile focus hours for active goal
+    prof_res = supabase_client.table("profiles").select("daily_hours, last_active_goal_id").eq("id", user_id).maybe_single().execute()
     daily_hours = prof_res.data.get("daily_hours") if prof_res.data and prof_res.data.get("daily_hours") is not None else 2.0
+    active_goal_id = prof_res.data.get("last_active_goal_id") if prof_res.data else None
+    
+    if active_goal_id:
+        tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).eq("goal_id", active_goal_id).execute()
+    else:
+        tasks_res = supabase_client.table("tasks").select("*").eq("user_id", user_id).execute()
     
     # 2. Run Scheduling Engine
     try:
@@ -132,26 +162,16 @@ async def schedule_tasks(data: dict, authorization: Optional[str] = Header(None)
         raise HTTPException(status_code=500, detail=f"Scheduling failed: {str(e)}")
 
 @app.post("/chat")
-async def chat_coach(data: dict, authorization: Optional[str] = Header(None)):
+async def chat_coach(data: dict, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
     # Expected keys: message, history
     message = data.get("message")
     history = data.get("history", [])
     
     if not message:
         raise HTTPException(status_code=400, detail="Missing message")
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
         
     supabase_client = get_supabase_client(authorization)
-    
-    token = authorization.split(" ")[1] if authorization and authorization.startswith("Bearer ") else None
-    try:
-        user_res = supabase_client.auth.get_user(token)
-        if not user_res or not user_res.user:
-            raise Exception("No user found in session response.")
-        user_id = user_res.user.id
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid JWT session: {str(e)}")
+    user_id = current_user.id
         
     # Run the Focus Coach agent
     res = run_coach_chat(supabase_client, user_id, message, history)
@@ -163,10 +183,24 @@ class OnboardingCompletion(BaseModel):
     preferences: dict
 
 @app.get("/google-login")
-async def google_login(user_id: str):
+async def google_login(supabase_token: Optional[str] = None, user_id: Optional[str] = None):
     """
     Generates a Google authorization URL for the user to link their calendar.
     """
+    if not supabase_token and not user_id:
+        raise HTTPException(status_code=400, detail="Missing supabase_token or user_id query parameter.")
+    
+    target_user_id = user_id
+    if supabase_token:
+        try:
+            admin_client = get_supabase_admin_client()
+            user_res = admin_client.auth.get_user(supabase_token)
+            if not user_res or not user_res.user:
+                raise Exception("No user found for the provided supabase token.")
+            target_user_id = user_res.user.id
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid supabase_token: {str(e)}")
+
     try:
         import urllib.parse
         secret_path = get_client_secret_path()
@@ -182,7 +216,7 @@ async def google_login(user_id: str):
             "https://www.googleapis.com/auth/userinfo.profile"
         ]
         
-        state_token = encrypt_data(user_id)
+        state_token = encrypt_data(target_user_id)
         
         params = {
             "client_id": client_id,
@@ -361,24 +395,13 @@ async def google_callback(code: str, state: str):
         """
 
 @app.post("/sync-goal-to-calendar/{goal_id}")
-async def sync_goal_to_calendar(goal_id: str, authorization: Optional[str] = Header(None)):
+async def sync_goal_to_calendar(goal_id: str, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
     """
     Schedules all pending subtasks of a goal into Google Calendar.
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-        
     supabase_client = get_supabase_client(authorization)
-    token = authorization.split(" ")[1] if authorization and authorization.startswith("Bearer ") else None
+    user_id = current_user.id
     
-    try:
-        user_res = supabase_client.auth.get_user(token)
-        if not user_res or not user_res.user:
-            raise Exception("No user found in session response.")
-        user_id = user_res.user.id
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid JWT session: {str(e)}")
-        
     # 1. Fetch all tasks for this goal
     try:
         tasks_res = supabase_client.table("tasks").select("*").eq("goal_id", goal_id).eq("user_id", user_id).eq("completed", False).execute()
@@ -443,23 +466,12 @@ async def sync_goal_to_calendar(goal_id: str, authorization: Optional[str] = Hea
     return {"status": "success", "scheduled_count": scheduled_count}
 
 @app.post("/complete-onboarding")
-async def complete_onboarding(data: OnboardingCompletion, authorization: Optional[str] = Header(None)):
+async def complete_onboarding(data: OnboardingCompletion, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
     """
     Completes onboarding by updating user profile information.
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-        
     supabase_client = get_supabase_client(authorization)
-    token = authorization.split(" ")[1] if authorization and authorization.startswith("Bearer ") else None
-    
-    try:
-        user_res = supabase_client.auth.get_user(token)
-        if not user_res or not user_res.user:
-            raise Exception("No user found in session response.")
-        user_id = user_res.user.id
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid JWT session: {str(e)}")
+    user_id = current_user.id
         
     if user_id != data.user_id:
         raise HTTPException(status_code=403, detail="Forbidden: Cannot update another user's onboarding status")
@@ -467,9 +479,12 @@ async def complete_onboarding(data: OnboardingCompletion, authorization: Optiona
     # Update profile table
     profile_data = {
         "display_name": data.full_name,
-        "current_focus": data.preferences.get("current_focus"),
+        "focus_area": data.preferences.get("focus_area", data.preferences.get("current_focus", "General")),
+        "current_focus": data.preferences.get("focus_area", data.preferences.get("current_focus", "General")),
         "daily_hours": data.preferences.get("daily_hours"),
-        "big_goal": data.preferences.get("big_goal"),
+        "work_style": data.preferences.get("work_style", "Deep Work"),
+        "user_level": data.preferences.get("user_level", "Beginner"),
+        "persona_completed": True,
         "onboarding_completed": True
     }
     
@@ -480,7 +495,7 @@ async def complete_onboarding(data: OnboardingCompletion, authorization: Optiona
         raise HTTPException(status_code=500, detail=f"Failed to save onboarding data: {str(e)}")
 
 @app.post("/onboarding-advice")
-async def onboarding_advice(data: dict, authorization: Optional[str] = Header(None), x_user_id: Optional[str] = Header(None)):
+async def onboarding_advice(data: dict, current_user: Any = Depends(get_current_user)):
     """
     Generates strategic options/advice based on user vague goal, daily commitment, and current focus.
     """
@@ -488,55 +503,67 @@ async def onboarding_advice(data: dict, authorization: Optional[str] = Header(No
     advice = get_onboarding_advice(data)
     return advice
 
-@app.get("/user-goals/{user_id}")
-async def get_user_goals(user_id: str, authorization: Optional[str] = Header(None)):
+@app.get("/user-goals")
+async def get_user_goals(current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
     """
-    Fetches all primary goals (tasks where is_goal = true) for the specified user.
+    Fetches all primary goals for the logged-in user.
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-        
+    user_id = current_user.id
     supabase_client = get_supabase_client(authorization)
-    token = authorization.split(" ")[1] if authorization and authorization.startswith("Bearer ") else None
-    
     try:
-        user_res = supabase_client.auth.get_user(token)
-        if not user_res or not user_res.user:
-            raise Exception("No user found in session response.")
-        jwt_user_id = user_res.user.id
+        # Fetch from goals table first
+        res = supabase_client.table("goals").select("*").eq("user_id", user_id).execute()
+        if res.data:
+            # Format to match expectations
+            return [
+                {
+                    "id": g["id"],
+                    "user_id": g["user_id"],
+                    "title": g["title"],
+                    "description": g.get("description", g["title"]),
+                    "completed": g.get("status") == "completed",
+                    "created_at": g["created_at"]
+                }
+                for g in res.data
+            ]
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid JWT session: {str(e)}")
-        
-    if jwt_user_id != user_id:
-        raise HTTPException(status_code=403, detail="Forbidden: Cannot view another user's goals")
+        print("Failed to fetch from goals table, trying fallback:", e)
         
     try:
-        # Fetch tasks belonging to the user
+        # Fallback to tasks table (is_goal = True in JSON description)
         res = supabase_client.table("tasks").select("*").eq("user_id", user_id).execute()
         tasks = res.data or []
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch tasks: {str(e)}")
-        
-    goals = []
-    for t in tasks:
-        desc_raw = t.get("description")
-        is_goal = False
-        notes = t.get("title")
-        if desc_raw:
-            try:
-                parsed = json.loads(desc_raw)
-                is_goal = parsed.get("is_goal", False)
-                notes = parsed.get("notes") or notes
-            except Exception:
-                pass
-        
-        if is_goal:
-            goals.append({
-                "id": t["id"],
-                "title": t["title"],
-                "description": notes,
-                "completed": t["completed"],
-                "created_at": t["created_at"]
-            })
+        goals = []
+        for t in tasks:
+            desc_raw = t.get("description")
+            is_goal = False
+            notes = t.get("title")
+            if desc_raw:
+                try:
+                    parsed = json.loads(desc_raw)
+                    is_goal = parsed.get("is_goal", False)
+                    notes = parsed.get("notes") or notes
+                except Exception:
+                    pass
             
-    return goals
+            if is_goal:
+                goals.append({
+                    "id": t["id"],
+                    "user_id": user_id,
+                    "title": t["title"],
+                    "description": notes,
+                    "completed": t["completed"],
+                    "created_at": t["created_at"]
+                })
+        return goals
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch goals: {str(e)}")
+
+@app.get("/user-goals/{user_id}")
+async def get_user_goals_legacy(user_id: str, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
+    """
+    Legacy route compatibility wrapper.
+    """
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden: Cannot view another user's goals")
+    return await get_user_goals(current_user, authorization)

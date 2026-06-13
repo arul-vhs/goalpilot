@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { userState, useUserState } from "@/lib/userState";
 
 export const Route = createFileRoute("/_authenticated/knowledge-graph")({
   component: KnowledgeGraphPage,
@@ -112,16 +113,24 @@ function KnowledgeGraphPage() {
     return () => ro.disconnect();
   }, []);
 
+  const { activeGoalId } = useUserState();
+
   const loadTasks = useCallback(async () => {
+    if (!activeGoalId) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const { data, error } = await supabase
       .from("tasks")
-      .select("id,title,description,priority,effort,depends_on,completed")
+      .select("id,title,description,priority,effort,depends_on,completed,goal_id")
+      .or(`id.eq.${activeGoalId},goal_id.eq.${activeGoalId}`)
       .order("created_at", { ascending: true });
     if (error) toast.error(error.message);
     setTasks((data ?? []) as Task[]);
     setLoading(false);
-  }, []);
+  }, [activeGoalId]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
@@ -229,8 +238,29 @@ function KnowledgeGraphPage() {
       });
 
       const dep = newDependsOn === "none" ? null : newDependsOn;
+      const newUUID = window.crypto.randomUUID();
+
+      if (newIsGoal) {
+        // Create in goals table
+        const { error: goalsErr } = await supabase.from("goals").insert({
+          id: newUUID,
+          user_id: user.id,
+          title: newTitle,
+          status: "pending"
+        });
+        if (goalsErr) throw goalsErr;
+        
+        // Update profile
+        await supabase
+          .from("profiles")
+          .update({ last_active_goal_id: newUUID })
+          .eq("id", user.id);
+          
+        userState.setActiveGoalId(newUUID);
+      }
 
       const { error } = await supabase.from("tasks").insert({
+        id: newIsGoal ? newUUID : undefined,
         user_id: user.id,
         title: newTitle,
         description: descJson,
@@ -238,6 +268,7 @@ function KnowledgeGraphPage() {
         effort: newEffort,
         depends_on: dep,
         completed: false,
+        goal_id: newIsGoal ? null : activeGoalId,
       });
 
       if (error) throw error;

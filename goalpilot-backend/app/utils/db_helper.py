@@ -6,9 +6,22 @@ def save_tasks_to_db(supabase_client: Client, user_id: str, big_goal_title: str,
     """
     Saves a generated list of tasks to Supabase, establishing dependencies.
     First, creates a "Goal" task that serves as the root node, and links all subtasks to it.
+    Also inserts a record in public.goals table with the same goal_id.
     """
     # 1. Create a root Goal node
     goal_id = str(uuid.uuid4())
+    
+    try:
+        goal_row_goals = {
+            "id": goal_id,
+            "user_id": user_id,
+            "title": big_goal_title,
+            "status": "pending"
+        }
+        supabase_client.table("goals").insert(goal_row_goals).execute()
+    except Exception as e:
+        print("Failed to insert into goals table, but proceeding:", e)
+
     goal_desc = json.dumps({
         "notes": f"Primary goal: {big_goal_title}",
         "is_goal": True,
@@ -80,4 +93,4 @@ def save_tasks_to_db(supabase_client: Client, user_id: str, big_goal_title: str,
         })
         
     result = supabase_client.table("tasks").insert(to_insert).execute()
-    return result.data
+    return goal_id, result.data

@@ -64,8 +64,20 @@ function Onboarding() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from("profiles").select("onboarding_completed").eq("id", user.id).maybeSingle();
-      if (data?.onboarding_completed) navigate({ to: "/dashboard" });
+      const { data } = await supabase.from("profiles").select("display_name,onboarding_completed").eq("id", user.id).maybeSingle();
+      if (data) {
+        if (data.display_name) {
+          setValues(prev => ({
+            ...prev,
+            full_name: data.display_name
+          }));
+        }
+        const searchParams = new URLSearchParams(window.location.search);
+        const isNew = searchParams.get("new") === "true";
+        if (!isNew && data.onboarding_completed) {
+          navigate({ to: "/dashboard" });
+        }
+      }
     })();
   }, [navigate]);
 
@@ -165,8 +177,8 @@ function Onboarding() {
 
       const qna = questions.map((q, idx) => ({ q, a: answers[idx] }));
 
-      // 1. Call Backend Goal Decomposer
-      const breakdownRes = await fetch("http://localhost:8000/breakdown-goal", {
+      // 1. Call Backend Goal Decomposer / Creator
+      const breakdownRes = await fetch("http://localhost:8000/create-goal", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -186,6 +198,11 @@ function Onboarding() {
       if (!breakdownRes.ok) {
         const err = await breakdownRes.json();
         throw new Error(err.detail || "Failed to breakdown goal.");
+      }
+
+      const breakdownData = await breakdownRes.json();
+      if (breakdownData.goal_id) {
+        userState.setActiveGoalId(breakdownData.goal_id);
       }
 
       // 2. Call Scheduling Engine (Initial Calendar Placement)

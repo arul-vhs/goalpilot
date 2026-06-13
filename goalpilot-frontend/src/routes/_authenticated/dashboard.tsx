@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
-import { userState } from "@/lib/userState";
+import { userState, useUserState } from "@/lib/userState";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
@@ -55,6 +55,7 @@ function parseDesc(descStr: string | null) {
 
 function Dashboard() {
   const navigate = useNavigate();
+  const { activeGoalId } = useUserState();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
@@ -66,28 +67,26 @@ function Dashboard() {
 
   const loadGoals = useCallback(async () => {
     try {
-      const userId = userState.userId;
-      if (!userId) return;
-      const res = await fetch(`http://localhost:8000/user-goals/${userId}`, {
+      const res = await fetch("http://localhost:8000/user-goals", {
         headers: userState.getAuthHeaders()
       });
       if (!res.ok) throw new Error("Failed to fetch goals");
       const data = await res.json();
       setGoals(data);
-      
-      if (data.length > 0) {
-        setSelectedGoal((prev: any) => {
-          if (prev && data.some((g: any) => g.id === prev.id)) {
-            return data.find((g: any) => g.id === prev.id);
-          }
-          return data[0];
-        });
-      }
     } catch (e) {
       console.error(e);
       toast.error("Could not fetch goals list.");
     }
   }, []);
+
+  useEffect(() => {
+    if (goals.length > 0) {
+      const target = goals.find((g: any) => g.id === activeGoalId) || goals[0];
+      setSelectedGoal(target);
+    } else {
+      setSelectedGoal(null);
+    }
+  }, [activeGoalId, goals]);
 
   const loadProfileAndTasks = useCallback(async () => {
     try {
@@ -335,9 +334,19 @@ function Dashboard() {
                     <span className="text-muted-foreground uppercase tracking-wider font-semibold">Change Target:</span>
                     <select
                       value={selectedGoal?.id || ""}
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const target = goals.find(g => g.id === e.target.value);
-                        if (target) setSelectedGoal(target);
+                        if (target) {
+                          setSelectedGoal(target);
+                          userState.setActiveGoalId(target.id);
+                          const userId = userState.userId;
+                          if (userId) {
+                            await supabase
+                              .from("profiles")
+                              .update({ last_active_goal_id: target.id })
+                              .eq("id", userId);
+                          }
+                        }
                       }}
                       className="text-xs font-semibold text-foreground bg-transparent border-0 outline-none cursor-pointer focus:ring-0"
                     >

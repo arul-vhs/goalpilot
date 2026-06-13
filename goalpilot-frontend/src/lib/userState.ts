@@ -5,12 +5,16 @@ export interface UserState {
   userId: string | null;
   token: string | null;
   loading: boolean;
+  activeGoalId: string | null;
+  personaCompleted: boolean;
 }
 
 let state: UserState = {
   userId: null,
   token: null,
   loading: true,
+  activeGoalId: null,
+  personaCompleted: false,
 };
 
 const listeners = new Set<(state: UserState) => void>();
@@ -31,10 +35,27 @@ export function subscribeToUserState(listener: (state: UserState) => void) {
 // Initialize and listen to auth changes
 if (typeof window !== "undefined") {
   // Get initial session
-  supabase.auth.getSession().then(({ data: { session } }) => {
+  supabase.auth.getSession().then(async ({ data: { session } }) => {
+    let activeGoalId = null;
+    let personaCompleted = false;
+    if (session?.user?.id) {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("last_active_goal_id, persona_completed")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        activeGoalId = data?.last_active_goal_id ?? null;
+        personaCompleted = !!data?.persona_completed;
+      } catch (e) {
+        console.error("Failed to load user profile", e);
+      }
+    }
     updateState({
       userId: session?.user?.id ?? null,
       token: session?.access_token ?? null,
+      activeGoalId,
+      personaCompleted,
       loading: false,
     });
   }).catch(() => {
@@ -42,10 +63,27 @@ if (typeof window !== "undefined") {
   });
 
   // Listen for changes
-  supabase.auth.onAuthStateChange((event, session) => {
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    let activeGoalId = null;
+    let personaCompleted = false;
+    if (session?.user?.id) {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("last_active_goal_id, persona_completed")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        activeGoalId = data?.last_active_goal_id ?? null;
+        personaCompleted = !!data?.persona_completed;
+      } catch (e) {
+        console.error("Failed to load user profile on auth change", e);
+      }
+    }
     updateState({
       userId: session?.user?.id ?? null,
       token: session?.access_token ?? null,
+      activeGoalId,
+      personaCompleted,
       loading: false,
     });
   });
@@ -60,6 +98,18 @@ export const userState = {
   },
   get loading() {
     return state.loading;
+  },
+  get activeGoalId() {
+    return state.activeGoalId;
+  },
+  get personaCompleted() {
+    return state.personaCompleted;
+  },
+  setActiveGoalId(id: string | null) {
+    updateState({ activeGoalId: id });
+  },
+  setPersonaCompleted(completed: boolean) {
+    updateState({ personaCompleted: completed });
   },
   getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
@@ -78,6 +128,8 @@ export function useUserState() {
     userId: state.userId,
     token: state.token,
     loading: state.loading,
+    activeGoalId: state.activeGoalId,
+    personaCompleted: state.personaCompleted,
   });
 
   useEffect(() => {

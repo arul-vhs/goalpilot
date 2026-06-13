@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { format, addDays, startOfWeek, parseISO } from "date-fns";
-import { userState } from "@/lib/userState";
+import { userState, useUserState } from "@/lib/userState";
 
 export const Route = createFileRoute("/_authenticated/calendar")({
   component: CalendarPage,
@@ -35,17 +35,24 @@ const mockGoogleEvents = [
 ];
 
 function CalendarPage() {
+  const { activeGoalId } = useUserState();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [rescheduling, setRescheduling] = useState(false);
   const [syncGoogle, setSyncGoogle] = useState(false);
 
   const loadTasksAndSchedules = useCallback(async () => {
+    if (!activeGoalId) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from("tasks")
-        .select("id,title,description,priority,effort,depends_on,completed")
+        .select("id,title,description,priority,effort,depends_on,completed,goal_id")
+        .eq("goal_id", activeGoalId)
         .order("created_at", { ascending: true });
       if (error) throw error;
       
