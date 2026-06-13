@@ -495,12 +495,33 @@ async def complete_onboarding(data: OnboardingCompletion, current_user: Any = De
         raise HTTPException(status_code=500, detail=f"Failed to save onboarding data: {str(e)}")
 
 @app.post("/onboarding-advice")
-async def onboarding_advice(data: dict, current_user: Any = Depends(get_current_user)):
+async def onboarding_advice(data: dict, current_user: Any = Depends(get_current_user), authorization: Optional[str] = Header(None)):
     """
-    Generates strategic options/advice based on user vague goal, daily commitment, and current focus.
+    Generates strategic options/advice based on user vague goal and persona.
     """
-    # Expected keys: goal, hours, focus
-    advice = get_onboarding_advice(data)
+    user_id = current_user.id
+    supabase_client = get_supabase_client(authorization)
+    
+    try:
+        profile_res = supabase_client.table("profiles").select("*").eq("id", user_id).maybe_single().execute()
+        profile_data = profile_res.data if profile_res else {}
+    except Exception as e:
+        print("Failed to fetch profile for onboarding advice:", e)
+        profile_data = {}
+        
+    goal = data.get("goal")
+    hours = profile_data.get("daily_hours")
+    if hours is None:
+        hours = 2
+    focus = profile_data.get("focus_area") or profile_data.get("current_focus") or "General"
+    
+    advice_payload = {
+        "goal": goal,
+        "hours": hours,
+        "focus": focus
+    }
+    
+    advice = get_onboarding_advice(advice_payload)
     return advice
 
 @app.get("/user-goals")

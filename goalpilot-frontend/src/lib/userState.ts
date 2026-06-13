@@ -7,6 +7,7 @@ export interface UserState {
   loading: boolean;
   activeGoalId: string | null;
   personaCompleted: boolean;
+  allMissions: any[];
 }
 
 let state: UserState = {
@@ -15,6 +16,7 @@ let state: UserState = {
   loading: true,
   activeGoalId: null,
   personaCompleted: false,
+  allMissions: [],
 };
 
 const listeners = new Set<(state: UserState) => void>();
@@ -105,11 +107,17 @@ export const userState = {
   get personaCompleted() {
     return state.personaCompleted;
   },
+  get allMissions() {
+    return state.allMissions;
+  },
   setActiveGoalId(id: string | null) {
     updateState({ activeGoalId: id });
   },
   setPersonaCompleted(completed: boolean) {
     updateState({ personaCompleted: completed });
+  },
+  setAllMissions(missions: any[]) {
+    updateState({ allMissions: missions });
   },
   getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
@@ -130,6 +138,7 @@ export function useUserState() {
     loading: state.loading,
     activeGoalId: state.activeGoalId,
     personaCompleted: state.personaCompleted,
+    allMissions: state.allMissions,
   });
 
   useEffect(() => {
