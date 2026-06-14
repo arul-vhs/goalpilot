@@ -120,7 +120,7 @@ function useUserState() {
   return currentState;
 }
 function getApiUrl(path) {
-  const baseUrl = "http://127.0.0.1:8000";
+  const baseUrl = "https://goalpilot-1.onrender.com";
   const cleanBase = baseUrl.replace(/\/+$/, "");
   const cleanPath = path.replace(/^\/+/, "");
   const url = `${cleanBase}/${cleanPath}`;

@@ -172,23 +172,23 @@ const Route$5 = createFileRoute("/")({
   }),
   component: lazyRouteComponent($$splitComponentImporter$5, "component")
 });
-const $$splitComponentImporter$4 = () => import("./onboarding-BzluU2N2.mjs");
+const $$splitComponentImporter$4 = () => import("./onboarding-BbHB4XIR.mjs");
 const Route$4 = createFileRoute("/_authenticated/onboarding")({
   component: lazyRouteComponent($$splitComponentImporter$4, "component")
 });
-const $$splitComponentImporter$3 = () => import("./knowledge-graph-DsFsPBHn.mjs");
+const $$splitComponentImporter$3 = () => import("./knowledge-graph-BxJFNLjs.mjs");
 const Route$3 = createFileRoute("/_authenticated/knowledge-graph")({
   component: lazyRouteComponent($$splitComponentImporter$3, "component")
 });
-const $$splitComponentImporter$2 = () => import("./kanban-D3aM3v92.mjs");
+const $$splitComponentImporter$2 = () => import("./kanban-e4EMcr_U.mjs");
 const Route$2 = createFileRoute("/_authenticated/kanban")({
   component: lazyRouteComponent($$splitComponentImporter$2, "component")
 });
-const $$splitComponentImporter$1 = () => import("./dashboard-D78cenFS.mjs");
+const $$splitComponentImporter$1 = () => import("./dashboard-DxUpHjLC.mjs");
 const Route$1 = createFileRoute("/_authenticated/dashboard")({
   component: lazyRouteComponent($$splitComponentImporter$1, "component")
 });
-const $$splitComponentImporter = () => import("./calendar-BGJ03NDH.mjs");
+const $$splitComponentImporter = () => import("./calendar-BoN4_cnV.mjs");
 const Route = createFileRoute("/_authenticated/calendar")({
   component: lazyRouteComponent($$splitComponentImporter, "component")
 });

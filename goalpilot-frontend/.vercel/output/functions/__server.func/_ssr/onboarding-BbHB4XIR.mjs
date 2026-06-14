@@ -3,7 +3,7 @@ import { d as useNavigate } from "../_libs/tanstack__react-router.mjs";
 import { I as Input, B as Button } from "./input-BiB-PFhx.mjs";
 import { s as supabase } from "./client-hQzx3ycp.mjs";
 import { t as toast } from "../_libs/sonner.mjs";
-import { u as userState, g as getApiUrl } from "./api-config-6k5iAoHf.mjs";
+import { u as userState, g as getApiUrl } from "./api-config-CUXI1WgJ.mjs";
 import { S as Sparkles, T as Target, a as Laptop, b as Briefcase, H as Heart, P as Palette, Z as Zap, C as Clock, c as ArrowLeft, A as ArrowRight } from "../_libs/lucide-react.mjs";
 import { m as motion, A as AnimatePresence } from "../_libs/framer-motion.mjs";
 import "../_libs/tanstack__router-core.mjs";

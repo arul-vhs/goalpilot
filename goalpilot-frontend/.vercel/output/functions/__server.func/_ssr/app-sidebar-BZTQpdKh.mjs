@@ -10,7 +10,7 @@ import { s as supabase } from "./client-hQzx3ycp.mjs";
 import { u as useQueryClient } from "../_libs/tanstack__react-query.mjs";
 import { t as toast } from "../_libs/sonner.mjs";
 import { R as Root$1, V as Viewport, C as Corner, S as ScrollAreaScrollbar, a as ScrollAreaThumb } from "../_libs/radix-ui__react-scroll-area.mjs";
-import { a as useUserState, u as userState, g as getApiUrl } from "./api-config-6k5iAoHf.mjs";
+import { a as useUserState, u as userState, g as getApiUrl } from "./api-config-CUXI1WgJ.mjs";
 import { L as Label } from "./label-D4W0VQAM.mjs";
 import { S as Select$1, a as SelectValue$1, b as SelectTrigger$1, c as SelectIcon, d as SelectPortal, e as SelectContent$1, f as SelectViewport, g as SelectItem$1, h as SelectItemIndicator, i as SelectItemText, j as SelectScrollUpButton$1, k as SelectScrollDownButton$1, l as SelectLabel$1, m as SelectSeparator$1 } from "../_libs/radix-ui__react-select.mjs";
 import { t as LayoutDashboard, N as Network, K as Kanban, o as Calendar, d as Plus, T as Target, u as Settings, v as LogOut, e as LoaderCircle, w as PanelLeft, X, x as ChevronDown, r as Check, S as Sparkles, y as Bot, U as User, R as RefreshCw, z as Send, D as ChevronUp } from "../_libs/lucide-react.mjs";
