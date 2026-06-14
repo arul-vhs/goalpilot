@@ -12,8 +12,14 @@ from supabase import Client
 def get_client_secret_path() -> str:
     """
     Finds the client_secret.json or client_secret.json.json file.
-    Checks the backend folder, workspace root, and typical paths.
+    Checks the Render secrets path, backend folder, workspace root, and typical paths.
     """
+    # 1. Render Secrets Path
+    render_secret_path = "/etc/secrets/client_secret.json"
+    if os.path.exists(render_secret_path):
+        return render_secret_path
+
+    # 2. Local development fallback paths
     # Current file is in goalpilot-backend/app/utils/
     # Parent parent is goalpilot-backend/
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -23,6 +29,8 @@ def get_client_secret_path() -> str:
         os.path.join(base_dir, "client_secret.json.json"),
         os.path.join(os.path.dirname(base_dir), "client_secret.json"),
         os.path.join(os.path.dirname(base_dir), "client_secret.json.json"),
+        "client_secret.json",
+        "client_secret.json.json",
     ]
     
     for path in paths_to_try:
