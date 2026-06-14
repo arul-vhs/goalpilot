@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 
 import { FocusCoach } from "./focus-coach";
 import { userState, useUserState } from "@/lib/userState";
-import { API_URL } from "@/lib/api-config";
+import { getApiUrl } from "@/lib/api-config";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -85,7 +85,7 @@ export function AppSidebar() {
     if (!userId) return;
     setSavingProfile(true);
     try {
-      const res = await fetch(`${API_URL}/complete-onboarding`, {
+      const res = await fetch(getApiUrl("complete-onboarding"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -123,7 +123,7 @@ export function AppSidebar() {
     if (!userId || !token) return;
     const fetchGoals = async () => {
       try {
-        const res = await fetch(`${API_URL}/user-goals`, {
+        const res = await fetch(getApiUrl("user-goals"), {
           headers: userState.getAuthHeaders(),
         });
         if (res.ok) {
@@ -252,7 +252,7 @@ export function AppSidebar() {
                   return;
                 }
                 try {
-                  const res = await fetch(`${API_URL}/google-login?supabase_token=${token}`, {
+                  const res = await fetch(getApiUrl(`google-login?supabase_token=${token}`), {
                     headers: userState.getAuthHeaders()
                   });
                   if (!res.ok) {
