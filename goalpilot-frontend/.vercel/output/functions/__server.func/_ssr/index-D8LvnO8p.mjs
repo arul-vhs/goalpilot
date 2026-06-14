@@ -3,7 +3,6 @@ import { d as useNavigate, L as Link } from "../_libs/tanstack__react-router.mjs
 import { B as Button, I as Input } from "./input-BiB-PFhx.mjs";
 import { L as Label } from "./label-D4W0VQAM.mjs";
 import { s as supabase } from "./client-hQzx3ycp.mjs";
-import { c as createLovableAuth } from "../_libs/lovable.dev__cloud-auth-js.mjs";
 import { t as toast } from "../_libs/sonner.mjs";
 import { m as motion } from "../_libs/framer-motion.mjs";
 import { S as Sparkles, T as Target, B as Brain, M as Mail, L as Lock, A as ArrowRight } from "../_libs/lucide-react.mjs";
@@ -38,31 +37,6 @@ import "tslib";
 import "../_libs/supabase__functions-js.mjs";
 import "../_libs/motion-dom.mjs";
 import "../_libs/motion-utils.mjs";
-const lovableAuth = createLovableAuth();
-const lovable = {
-  auth: {
-    signInWithOAuth: async (provider, opts) => {
-      const result = await lovableAuth.signInWithOAuth(provider, {
-        redirect_uri: opts?.redirect_uri,
-        extraParams: {
-          ...opts?.extraParams
-        }
-      });
-      if (result.redirected) {
-        return result;
-      }
-      if (result.error) {
-        return result;
-      }
-      try {
-        await supabase.auth.setSession(result.tokens);
-      } catch (e) {
-        return { error: e instanceof Error ? e : new Error(String(e)) };
-      }
-      return result;
-    }
-  }
-};
 function Landing() {
   const navigate = useNavigate();
   const [mode, setMode] = reactExports.useState("signin");
@@ -80,18 +54,23 @@ function Landing() {
   }, [navigate]);
   const handleGoogle = async () => {
     setLoading(true);
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin
-    });
-    if (result.error) {
-      toast.error(result.error.message ?? "Sign-in failed");
+    try {
+      const {
+        error
+      } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) {
+        toast.error(error.message ?? "Sign-in failed");
+        setLoading(false);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unexpected sign-in error");
       setLoading(false);
-      return;
     }
-    if (result.redirected) return;
-    navigate({
-      to: "/dashboard"
-    });
   };
   const handleEmail = async (e) => {
     e.preventDefault();

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Calendar as CalendarIcon, Sparkles, RefreshCw, AlertCircle, Clock, Link2, ShieldAlert, Check } from "lucide-react";
+import { Calendar as CalendarIcon, Sparkles, RefreshCw, AlertCircle, Clock, Link2, ShieldAlert, Check, Loader2 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { supabase } from "@/integrations/supabase/client";

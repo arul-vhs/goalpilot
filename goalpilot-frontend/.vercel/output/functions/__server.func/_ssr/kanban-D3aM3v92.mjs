@@ -1,8 +1,8 @@
 import { r as reactExports, j as jsxRuntimeExports } from "../_libs/react.mjs";
-import { S as SidebarProvider, A as AppSidebar, a as SidebarTrigger } from "./app-sidebar-BZTQpdKh.mjs";
+import { S as SidebarProvider, A as AppSidebar, a as SidebarTrigger } from "./app-sidebar-JfnbziOs.mjs";
 import { s as supabase } from "./client-hQzx3ycp.mjs";
 import { t as toast } from "../_libs/sonner.mjs";
-import { a as useUserState, g as getApiUrl, u as userState } from "./api-config-CUXI1WgJ.mjs";
+import { a as useUserState, g as getApiUrl, u as userState } from "./api-config-6k5iAoHf.mjs";
 import { l as SquareKanban, S as Sparkles, e as LoaderCircle } from "../_libs/lucide-react.mjs";
 import { m as motion, A as AnimatePresence } from "../_libs/framer-motion.mjs";
 import "../_libs/tanstack__react-router.mjs";

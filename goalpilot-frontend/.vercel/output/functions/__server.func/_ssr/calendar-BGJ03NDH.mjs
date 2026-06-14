@@ -1,12 +1,12 @@
 import { r as reactExports, j as jsxRuntimeExports } from "../_libs/react.mjs";
-import { S as SidebarProvider, A as AppSidebar, a as SidebarTrigger } from "./app-sidebar-BZTQpdKh.mjs";
+import { S as SidebarProvider, A as AppSidebar, a as SidebarTrigger } from "./app-sidebar-JfnbziOs.mjs";
 import { s as supabase } from "./client-hQzx3ycp.mjs";
 import { B as Button, c as cn } from "./input-BiB-PFhx.mjs";
 import { S as Switch$1, a as SwitchThumb } from "../_libs/radix-ui__react-switch.mjs";
 import { t as toast } from "../_libs/sonner.mjs";
-import { a as useUserState, u as userState, g as getApiUrl } from "./api-config-CUXI1WgJ.mjs";
+import { a as useUserState, u as userState, g as getApiUrl } from "./api-config-6k5iAoHf.mjs";
 import { s as startOfWeek, a as addDays, f as format, p as parseISO } from "../_libs/date-fns.mjs";
-import { o as Calendar, R as RefreshCw, S as Sparkles, C as Clock, q as CircleAlert, r as Check, s as Link2 } from "../_libs/lucide-react.mjs";
+import { o as Calendar, R as RefreshCw, S as Sparkles, e as LoaderCircle, C as Clock, q as CircleAlert, r as Check, s as Link2 } from "../_libs/lucide-react.mjs";
 import { m as motion } from "../_libs/framer-motion.mjs";
 import "../_libs/tanstack__react-router.mjs";
 import "../_libs/tanstack__router-core.mjs";
@@ -290,7 +290,7 @@ function CalendarPage() {
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 max-w-2xl text-muted-foreground", children: 'Availability-based agenda. If you miss a task, or when calendar sync changes your free blocks, click "Smart Reschedule" to re-arrange.' })
         ] }),
-        loading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 flex items-center justify-center text-muted-foreground mt-8", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Loader2, { className: "h-6 w-6 animate-spin text-primary-glow" }) }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8 grid gap-6 lg:grid-cols-[1fr_300px]", children: [
+        loading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 flex items-center justify-center text-muted-foreground mt-8", children: /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-6 w-6 animate-spin text-primary-glow" }) }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8 grid gap-6 lg:grid-cols-[1fr_300px]", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "glass-strong border border-border rounded-2xl p-6 overflow-x-auto min-w-[700px]", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-7 gap-4 border-b border-border pb-4", children: weekDays.map((day, idx) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground uppercase", children: format(day, "eee") }),
